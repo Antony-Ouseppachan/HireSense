@@ -34,16 +34,16 @@ function SplashScreen({ onComplete }) {
               <p className="splash-tagline">Master Your Career Potential</p>
             </div>
           </div>
-        </div>container">
+        </div>
+
+        <div className="loading-container">
           <div className="loading-dots">
             <span></span>
             <span></span>
             <span></span>
           </div>
           <p className="loading-text">Initializing Platform</p>
-        </div
         </div>
-        <p className="loading-text">Preparing your interview experience...</p>
       </div>
     </div>
   );
