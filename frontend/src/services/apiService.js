@@ -1,23 +1,20 @@
 ﻿const API_BASE = "http://localhost:5000";
 
-function getHeaders(token) {
+function getHeaders() {
   return {
-    "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {})
+    "Content-Type": "application/json"
   };
 }
 
-export async function sendOtp(email) {
-  const response = await fetch(`${API_BASE}/auth/send-otp`, {
-    method: "POST",
-    headers: getHeaders(),
-    body: JSON.stringify({ email })
+export async function getProfile() {
+  const response = await fetch(`${API_BASE}/profile`, {
+    headers: getHeaders()
   });
   return response.json();
 }
 
-export async function verifyOtp(payload) {
-  const response = await fetch(`${API_BASE}/auth/verify-otp`, {
+export async function saveProfile(payload) {
+  const response = await fetch(`${API_BASE}/profile`, {
     method: "POST",
     headers: getHeaders(),
     body: JSON.stringify(payload)
@@ -25,87 +22,68 @@ export async function verifyOtp(payload) {
   return response.json();
 }
 
-export async function getProfile(token) {
-  const response = await fetch(`${API_BASE}/profile`, {
-    headers: getHeaders(token)
-  });
-  return response.json();
-}
-
-export async function saveProfile(payload, token) {
-  const response = await fetch(`${API_BASE}/profile`, {
-    method: "POST",
-    headers: getHeaders(token),
-    body: JSON.stringify(payload)
-  });
-  return response.json();
-}
-
-export async function getInterviews(token) {
+export async function getInterviews() {
   const response = await fetch(`${API_BASE}/interviews`, {
-    headers: getHeaders(token)
+    headers: getHeaders()
   });
   return response.json();
 }
 
-export async function getInterviewById(id, token) {
+export async function getInterviewById(id) {
   const response = await fetch(`${API_BASE}/interviews/${id}`, {
-    headers: getHeaders(token)
+    headers: getHeaders()
   });
   return response.json();
 }
 
-export async function startMockInterview(payload, token) {
+export async function startMockInterview(payload) {
   const response = await fetch(`${API_BASE}/interviews/start`, {
     method: "POST",
-    headers: getHeaders(token),
+    headers: getHeaders(),
     body: JSON.stringify(payload)
   });
   return response.json();
 }
 
-export async function submitInterviewResponses(id, payload, token) {
+export async function submitInterviewResponses(id, payload) {
   const response = await fetch(`${API_BASE}/interviews/submit/${id}`, {
     method: "POST",
-    headers: getHeaders(token),
+    headers: getHeaders(),
     body: JSON.stringify(payload)
   });
   return response.json();
 }
 
-export async function uploadResume(formData, token) {
+export async function uploadResume(formData) {
   const response = await fetch(`${API_BASE}/resume/upload`, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`
-    },
     body: formData
   });
   return response.json();
 }
 
-export async function analyzeProfile(payload, token) {
+export async function analyzeProfile(payload) {
   const response = await fetch(`${API_BASE}/ai/analyze-profile`, {
     method: "POST",
-    headers: getHeaders(token),
+    headers: getHeaders(),
     body: JSON.stringify(payload)
   });
   return response.json();
 }
 
-export async function evaluateInterview(payload, token) {
+export async function evaluateInterview(payload) {
   const response = await fetch(`${API_BASE}/ai/evaluate-interview`, {
     method: "POST",
-    headers: getHeaders(token),
+    headers: getHeaders(),
     body: JSON.stringify(payload)
   });
   return response.json();
 }
 
-export async function analyzeResume(payload, token) {
-  return analyzeProfile(payload, token);
+export async function analyzeResume(payload) {
+  return analyzeProfile(payload);
 }
 
-export async function matchCandidate(payload, token) {
-  return evaluateInterview(payload, token);
+export async function matchCandidate(payload) {
+  return evaluateInterview(payload);
 }

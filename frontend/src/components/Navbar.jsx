@@ -1,6 +1,6 @@
 ﻿import { Link } from "react-router-dom";
 
-function Navbar({ user, onLogout }) {
+function Navbar({ user }) {
   return (
     <header className="navbar">
       <div className="nav-left">
@@ -10,14 +10,9 @@ function Navbar({ user, onLogout }) {
         <Link to="/profile">Profile</Link>
       </div>
       <div className="nav-right">
-        {user ? (
+        {user && (
           <>
             <span>{user.email}</span>
-            <button onClick={onLogout}>Logout</button>
-          </>
-        ) : (
-          <>
-            <Link to="/login">Login</Link>
           </>
         )}
       </div>
