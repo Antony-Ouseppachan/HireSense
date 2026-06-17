@@ -1,11 +1,12 @@
 ﻿import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Home from "./pages/Home";
 import Dashboard from "./pages/Dashboard";
 import Profile from "./pages/Profile";
 import Interviews from "./pages/Interviews";
 import InterviewSession from "./pages/InterviewSession";
 import Navbar from "./components/Navbar";
+import SplashScreen from "./components/SplashScreen";
 import {
   getProfile,
   saveProfile,
@@ -13,11 +14,21 @@ import {
   startMockInterview,
   uploadResume
 } from "./services/apiService";
+import "./App.css";
 
 function App() {
   const [user] = useState({ id: 1, name: "User", email: "user@example.com", role: "candidate" });
   const [interviews, setInterviews] = useState([]);
   const [profile, setProfile] = useState(null);
+  const [showSplash, setShowSplash] = useState(true);
+
+  useEffect(() => {
+    // Simulate loading data
+    const timer = setTimeout(() => {
+      setShowSplash(false);
+    }, 3500);
+    return () => clearTimeout(timer);
+  }, []);
 
   const saveProfileData = async (profileData) => {
     const saved = await saveProfile(profileData);
@@ -40,6 +51,10 @@ function App() {
     setInterviews((prev) => [session, ...prev]);
     return session;
   };
+
+  if (showSplash) {
+    return <SplashScreen onComplete={() => setShowSplash(false)} />;
+  }
 
   return (
     <BrowserRouter>
