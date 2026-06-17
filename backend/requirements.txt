@@ -1,0 +1,11 @@
+﻿fastapi
+uvicorn
+pydantic
+ollama
+PyMuPDF
+python-multipart
+python-dotenv
+SQLAlchemy
+psycopg[binary]
+PyJWT
+bcrypt

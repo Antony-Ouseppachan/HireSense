@@ -1,0 +1,37 @@
+-- PostgreSQL schema for HireSense backend
+
+CREATE TABLE IF NOT EXISTS users (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  email VARCHAR(255) NOT NULL UNIQUE,
+  password VARCHAR(255) NOT NULL,
+  role VARCHAR(100) NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS profiles (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+  education TEXT,
+  skills TEXT,
+  experience TEXT,
+  resume_url TEXT
+);
+
+CREATE TABLE IF NOT EXISTS mock_interviews (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  questions JSONB NOT NULL,
+  responses JSONB,
+  score INTEGER,
+  feedback JSONB,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS assessments (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  assessment_type VARCHAR(100) NOT NULL,
+  result JSONB,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
