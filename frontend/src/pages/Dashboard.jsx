@@ -1,8 +1,29 @@
-﻿import { useMemo } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 import "../styles/Dashboard.css";
 
-function Dashboard({ user, interviews, profile }) {
+function Dashboard() {
+  const { user } = useAuth();
+  const [interviews, setInterviews] = useState([]);
+  const [profile, setProfile] = useState(null);
+
+  useEffect(() => {
+    try {
+      const savedProfile = JSON.parse(localStorage.getItem("hireSenseProfile") || "null");
+      const savedInterviews = JSON.parse(localStorage.getItem("hireSenseInterviews") || "null");
+
+      if (savedProfile) setProfile(savedProfile);
+      if (Array.isArray(savedInterviews)) setInterviews(savedInterviews);
+    } catch (error) {
+      console.warn("Dashboard data could not be restored:", error);
+    }
+  }, []);
+
+  const displayName = user?.displayName || user?.email?.split("@")[0] || "there";
+  const interviewCount = Array.isArray(interviews) ? interviews.length : 0;
+  const latestScore = Array.isArray(interviews) && interviews[0]?.score != null ? interviews[0].score : null;
+
   const profileCompletion = useMemo(() => {
     if (!profile) return 0;
     const fields = [profile.education, profile.skills, profile.experience, profile.resume_url];
@@ -10,14 +31,12 @@ function Dashboard({ user, interviews, profile }) {
     return Math.round((filled / fields.length) * 100);
   }, [profile]);
 
-  const latestScore = interviews?.[0]?.score ?? null;
-
   return (
     <div className="dashboard-container">
       <div className="dashboard-header">
         <div className="welcome-section">
           <div className="welcome-text">
-            <h1>Welcome back, {user.name}</h1>
+            <h1>Welcome back, {displayName}</h1>
             <p>Your interview preparation dashboard</p>
           </div>
         </div>
@@ -25,7 +44,7 @@ function Dashboard({ user, interviews, profile }) {
         <div className="stats-grid">
           <div className="stat-card stat-interviews">
             <div className="stat-icon icon-interviews"></div>
-            <div className="stat-number">{interviews.length}</div>
+            <div className="stat-number">{interviewCount}</div>
             <div className="stat-label">Interviews</div>
           </div>
           <div className="stat-card stat-profile">
@@ -53,12 +72,12 @@ function Dashboard({ user, interviews, profile }) {
             Recent Interviews
           </h2>
 
-          {interviews.length > 0 ? (
+          {interviewCount > 0 ? (
             <ul className="interview-list">
               {interviews.slice(0, 5).map((interview, index) => (
                 <li key={index} className="interview-item">
                   <div className="interview-title">
-                    {interview.title || `Interview ${interviews.length - index}`}
+                    {interview.title || `Interview ${interviewCount - index}`}
                   </div>
                   <div className="interview-date">
                     {interview.date ? new Date(interview.date).toLocaleDateString() : "Recently"}
@@ -76,7 +95,7 @@ function Dashboard({ user, interviews, profile }) {
             </div>
           )}
 
-          {interviews.length > 0 && (
+          {interviewCount > 0 && (
             <Link to="/interviews">
               <button className="cta-button">View All Interviews</button>
             </Link>
@@ -94,11 +113,11 @@ function Dashboard({ user, interviews, profile }) {
               <div className="profile-overview">
                 <div className="profile-item">
                   <span className="profile-label">Full Name</span>
-                  <span className="profile-value">{profile.name || user.name}</span>
+                  <span className="profile-value">{profile.name || displayName}</span>
                 </div>
                 <div className="profile-item">
                   <span className="profile-label">Email</span>
-                  <span className="profile-value">{user.email}</span>
+                  <span className="profile-value">{user?.email || "Not available"}</span>
                 </div>
                 <div className="profile-item">
                   <span className="profile-label">Role</span>

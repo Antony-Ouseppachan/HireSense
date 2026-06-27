@@ -1,4 +1,4 @@
-﻿fastapi
+fastapi
 uvicorn
 pydantic
 ollama
@@ -7,5 +7,7 @@ python-multipart
 python-dotenv
 SQLAlchemy
 psycopg[binary]
+psycopg2-binary
 PyJWT
 bcrypt
+email-validator
