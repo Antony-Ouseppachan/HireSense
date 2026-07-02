@@ -1,4 +1,4 @@
-const { pool } = require("../db");
+const db = require("../config/database");
 
 function generateQuestionsFromProfile(profile) {
   const baseSkills = profile.skills ? profile.skills.split(",").map((skill) => skill.trim()) : [];
@@ -18,7 +18,7 @@ function generateQuestionsFromProfile(profile) {
 async function listInterviews(req, res) {
   try {
     const userId = req.user.userId;
-    const result = await pool.query(
+    const result = await db.query(
       "SELECT id, user_id, questions, responses, score, feedback, created_at FROM mock_interviews WHERE user_id = $1 ORDER BY created_at DESC",
       [userId]
     );
@@ -38,7 +38,7 @@ async function startMockInterview(req, res) {
     }
 
     const questions = generateQuestionsFromProfile(profile);
-    const result = await pool.query(
+    const result = await db.query(
       `INSERT INTO mock_interviews (user_id, questions, responses, score, feedback, created_at)
        VALUES ($1, $2, $3, $4, $5, NOW())
        RETURNING id, user_id, questions, responses, score, feedback, created_at`,
@@ -56,7 +56,7 @@ async function getInterviewById(req, res) {
   try {
     const userId = req.user.userId;
     const { id } = req.params;
-    const result = await pool.query(
+    const result = await db.query(
       "SELECT id, user_id, questions, responses, score, feedback, created_at FROM mock_interviews WHERE id = $1 AND user_id = $2",
       [id, userId]
     );
@@ -91,7 +91,7 @@ async function submitInterviewResponses(req, res) {
       rating: response.answer ? Math.min(5, Math.max(1, Math.round(response.answer.length / 60))) : 2
     }));
 
-    const result = await pool.query(
+    const result = await db.query(
       `UPDATE mock_interviews
        SET responses = $1,
            score = $2,

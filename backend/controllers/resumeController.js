@@ -1,4 +1,4 @@
-const { pool } = require("../db");
+const db = require("../config/database");
 
 async function uploadResume(req, res) {
   try {
@@ -13,7 +13,7 @@ async function uploadResume(req, res) {
 
     const resumeUrl = `/uploads/${req.file.filename}`;
 
-    const result = await pool.query(
+    const result = await db.query(
       `INSERT INTO profiles (user_id, education, skills, experience, resume_url)
        VALUES ($1, '', '', '', $2)
        ON CONFLICT (user_id)

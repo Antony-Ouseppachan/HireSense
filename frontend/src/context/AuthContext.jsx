@@ -1,70 +1,216 @@
 // src/context/AuthContext.jsx
-import React, { createContext, useContext, useEffect, useState } from "react";
-import { auth } from "../firebase/config";
 
-const AuthContext = createContext({
-  user: null,
-  loading: false,
-  loginWithGoogle: async () => {},
-  signupWithEmail: async () => {},
-  loginWithEmail: async () => {},
-  logout: async () => {},
-});
+import {
+    createContext,
+    useContext,
+    useEffect,
+    useMemo,
+    useState,
+} from "react";
+
+import {
+    loginWithGoogle as firebaseGoogleLogin,
+    loginWithEmail as firebaseEmailLogin,
+    registerWithEmail,
+    logout as firebaseLogout,
+    observeAuthState,
+} from "../services/authService";
+
+import {
+    authenticateUser,
+    getAuthenticatedUser,
+} from "../services/apiService";
+
+const AuthContext = createContext(null);
 
 export const useAuth = () => useContext(AuthContext);
 
-export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(!!auth);
+export function AuthProvider({ children }) {
+    const [firebaseUser, setFirebaseUser] = useState(null);
+    const [backendUser, setBackendUser] = useState(null);
 
-  useEffect(() => {
-    if (!auth) {
-      setLoading(false);
-      return;
-    }
+    const [loading, setLoading] = useState(true);
 
-    // Dynamic import of firebase/auth methods
-    import("firebase/auth").then(({ onAuthStateChanged }) => {
-      const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-        setUser(currentUser);
-        setLoading(false);
-      });
-      return () => unsubscribe();
-    }).catch(() => {
-      setLoading(false);
-    });
-  }, []);
+    /* ==========================================================
+       Sync Firebase user with Express + Neon
+    ========================================================== */
 
-  const loginWithGoogle = async () => {
-    if (!auth) throw new Error("Firebase not configured");
-    const { GoogleAuthProvider, signInWithPopup } = await import("firebase/auth");
-    const provider = new GoogleAuthProvider();
-    await signInWithPopup(auth, provider);
-  };
+    const syncUserWithBackend = async () => {
+        try {
+            // Creates user if first login,
+            // updates last_login otherwise.
+            const loginResponse = await authenticateUser();
 
-  const signupWithEmail = async (email, password) => {
-    if (!auth) throw new Error("Firebase not configured");
-    const { createUserWithEmailAndPassword } = await import("firebase/auth");
-    await createUserWithEmailAndPassword(auth, email, password);
-  };
+            if (loginResponse.success) {
+                setBackendUser(loginResponse.user);
+                return loginResponse.user;
+            }
 
-  const loginWithEmail = async (email, password) => {
-    if (!auth) throw new Error("Firebase not configured");
-    const { signInWithEmailAndPassword } = await import("firebase/auth");
-    await signInWithEmailAndPassword(auth, email, password);
-  };
+            return null;
+        } catch (error) {
+            console.error("Backend Authentication Failed:", error);
+            setBackendUser(null);
+            return null;
+        }
+    };
 
-  const logout = async () => {
-    if (!auth) return;
-    const { signOut } = await import("firebase/auth");
-    await signOut(auth);
-  };
+    /* ==========================================================
+       Firebase Auth Listener
+    ========================================================== */
 
-  return (
-    <AuthContext.Provider
-      value={{ user, loading, loginWithGoogle, signupWithEmail, loginWithEmail, logout }}
-    >
-      {children}
-    </AuthContext.Provider>
-  );
-};
+    useEffect(() => {
+        const unsubscribe = observeAuthState(async (user) => {
+            try {
+                setLoading(true);
+
+                if (!user) {
+                    setFirebaseUser(null);
+                    setBackendUser(null);
+                    setLoading(false);
+                    return;
+                }
+
+                setFirebaseUser(user);
+
+                // Sync/Login with backend
+                await syncUserWithBackend();
+
+            } catch (error) {
+                console.error(error);
+                setBackendUser(null);
+            } finally {
+                setLoading(false);
+            }
+        });
+
+        return unsubscribe;
+    }, []);
+
+    /* ==========================================================
+       Email Login
+    ========================================================== */
+
+    const loginWithEmail = async (email, password) => {
+        await firebaseEmailLogin(email, password);
+
+        const backend = await syncUserWithBackend();
+
+        return backend;
+    };
+
+    /* ==========================================================
+       Email Registration
+    ========================================================== */
+
+    const signupWithEmail = async (email, password) => {
+        await registerWithEmail(email, password);
+
+        const backend = await syncUserWithBackend();
+
+        return backend;
+    };
+
+    /* ==========================================================
+       Google Login
+    ========================================================== */
+
+    const loginWithGoogle = async () => {
+        await firebaseGoogleLogin();
+
+        const backend = await syncUserWithBackend();
+
+        return backend;
+    };
+
+    /* ==========================================================
+       Logout
+    ========================================================== */
+
+    const logout = async () => {
+        await firebaseLogout();
+
+        setFirebaseUser(null);
+        setBackendUser(null);
+    };
+
+    /* ==========================================================
+       Refresh Backend User
+    ========================================================== */
+
+    const refreshUser = async () => {
+        try {
+            const response = await getAuthenticatedUser();
+
+            if (response.success) {
+                setBackendUser(response.user);
+                return response.user;
+            }
+
+            return null;
+        } catch (error) {
+            console.error(error);
+            return null;
+        }
+    };
+
+    /* ==========================================================
+       Helper Flags
+    ========================================================== */
+
+    const isAuthenticated =
+        firebaseUser !== null &&
+        backendUser !== null;
+
+    const isCandidate =
+        backendUser?.role === "candidate";
+
+    const isRecruiter =
+        backendUser?.role === "recruiter";
+
+    const isAdmin =
+        backendUser?.role === "admin";
+
+    /* ==========================================================
+       Context Value
+    ========================================================== */
+
+    const value = useMemo(
+        () => ({
+            firebaseUser,
+            backendUser,
+
+            user: backendUser,
+
+            loading,
+
+            isAuthenticated,
+            isCandidate,
+            isRecruiter,
+            isAdmin,
+
+            loginWithEmail,
+            signupWithEmail,
+            loginWithGoogle,
+            logout,
+
+            refreshUser,
+        }),
+        [
+            firebaseUser,
+            backendUser,
+            loading,
+            isAuthenticated,
+            isCandidate,
+            isRecruiter,
+            isAdmin,
+        ]
+    );
+
+    return (
+        <AuthContext.Provider value={value}>
+            {children}
+        </AuthContext.Provider>
+    );
+}
+
+export default AuthContext;

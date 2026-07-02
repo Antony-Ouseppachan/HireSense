@@ -1,9 +1,9 @@
-const { pool } = require("../db");
+const db = require("../config/database");
 
 async function getProfileByUserId(req, res) {
   try {
     const { userId } = req.params;
-    const result = await pool.query(
+    const result = await db.query(
       "SELECT id, user_id, education, skills, experience, resume_url FROM profiles WHERE user_id = $1",
       [userId]
     );
@@ -25,7 +25,7 @@ async function createProfile(req, res) {
       return res.status(400).json({ message: "user_id, education, skills, and experience are required." });
     }
 
-    const result = await pool.query(
+    const result = await db.query(
       `INSERT INTO profiles (user_id, education, skills, experience, resume_url)
        VALUES ($1, $2, $3, $4, $5)
        RETURNING id, user_id, education, skills, experience, resume_url`,
@@ -44,7 +44,7 @@ async function updateProfileById(req, res) {
     const { id } = req.params;
     const { education, skills, experience, resume_url } = req.body;
 
-    const result = await pool.query(
+    const result = await db.query(
       `UPDATE profiles
        SET education = $1,
            skills = $2,
