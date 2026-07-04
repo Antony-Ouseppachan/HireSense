@@ -1,7 +1,6 @@
 fastapi
 uvicorn
 pydantic
-ollama
 PyMuPDF
 python-multipart
 python-dotenv

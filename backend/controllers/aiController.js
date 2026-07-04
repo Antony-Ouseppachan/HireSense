@@ -1,3 +1,11 @@
+const axios = require("axios");
+const { baseUrl } = require("../config/ai");
+
+const pythonClient = axios.create({
+  baseURL: baseUrl,
+  timeout: 65000,
+});
+
 function buildProfileText(profile, text) {
   const fields = [];
   if (profile) {
@@ -67,7 +75,38 @@ async function evaluateInterview(req, res) {
   }
 }
 
+/**
+ * Calls the Python AI service (/ai/questions), which in turn calls the
+ * AI Gateway. Node never talks to the gateway or Ollama directly.
+ */
+async function generateQuestions(req, res) {
+  try {
+    const { profile, mode } = req.body;
+
+    if (!profile || typeof profile !== "object") {
+      return res.status(400).json({ success: false, message: "profile is required." });
+    }
+
+    const { data } = await pythonClient.post("/ai/questions", profile, {
+      params: mode ? { mode } : undefined,
+    });
+
+    if (!data.success) {
+      return res.status(502).json({
+        success: false,
+        message: data.error || "Failed to generate questions.",
+      });
+    }
+
+    res.json({ success: true, questions: data.questions });
+  } catch (error) {
+    console.error("AI generate questions error:", error.message);
+    res.status(502).json({ success: false, message: "AI service is unavailable." });
+  }
+}
+
 module.exports = {
   analyzeProfile,
-  evaluateInterview
+  evaluateInterview,
+  generateQuestions
 };
