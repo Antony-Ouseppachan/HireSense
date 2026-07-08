@@ -13,6 +13,7 @@ const profileRoutes = require("./routes/profile");
 const interviewsRoutes = require("./routes/interviews");
 const aiRoutes = require("./routes/ai");
 const resumeRoutes = require("./routes/resume");
+const autocompleteRoutes = require("./routes/autocomplete");
 
 const app = express();
 
@@ -38,6 +39,7 @@ app.use("/api/profile", profileRoutes);
 app.use("/api/interviews", interviewsRoutes);
 app.use("/api/ai", aiRoutes);
 app.use("/api/resume", resumeRoutes);
+app.use("/api/autocomplete", autocompleteRoutes);
 
 const PORT = process.env.PORT || 5000;
 

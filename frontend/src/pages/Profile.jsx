@@ -1,434 +1,554 @@
-﻿import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import AutocompleteInput from "../components/AutocompleteInput.jsx";
 import LoadingSpinner from "/src/components/LoadingSpinner.jsx";
 import { useAuth } from "/src/context/AuthContext.jsx";
+import {
+  getProfile, saveProfile,
+  addEducation, updateEducation, deleteEducation,
+  addSkill, removeSkill,
+  addProject, updateProject, deleteProject,
+  saveLearningGoals, saveWeakAreas,
+  searchRoles, searchSkills, searchDegrees, searchSpecializations, searchInstitutions,
+  uploadResume, deleteResume,
+} from "/src/services/apiService.js";
 import "/src/styles/Profile.css";
 
-const FIELDS = [
-  { key: "role", label: "Target Role", type: "input", placeholder: "e.g. Backend Developer" },
-  { key: "education", label: "Education", type: "textarea", placeholder: "Degree, institution, graduation year..." },
-  { key: "skills", label: "Skills", type: "textarea", placeholder: "React, Node.js, PostgreSQL..." },
-  { key: "experience", label: "Experience", type: "textarea", placeholder: "Roles, companies, years..." },
-  { key: "projects", label: "Projects", type: "textarea", placeholder: "What you built, and what it does..." },
+const LEARNING_GOALS = [
+  "Placement Preparation", "Improve DSA", "Web Development",
+  "AI & Machine Learning", "Cloud Computing", "DevOps",
+  "Cyber Security", "Mobile Development", "Competitive Programming",
 ];
 
-function getInitials(name, email) {
-  const source = (name || email || "?").trim();
-  if (!source) return "?";
-  const parts = source.split(" ").filter(Boolean);
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-  return source.slice(0, 2).toUpperCase();
+const WEAK_AREAS = [
+  "Aptitude", "Communication", "DSA", "SQL", "JavaScript",
+  "OOP", "Operating Systems", "DBMS", "Networking", "System Design",
+];
+
+const EXPERIENCE_LEVELS = ["Student", "Fresher", "Internship Experience", "Professional Experience"];
+
+function getInitials(first, last, email) {
+  if (first && last) return (first[0] + last[0]).toUpperCase();
+  if (first) return first.slice(0, 2).toUpperCase();
+  const s = (email || "?").trim();
+  return s.slice(0, 2).toUpperCase();
 }
 
-function Profile({ user, profile, onSave, onResumeUpload, onResumeDelete }) {
-  const { resendVerificationEmail, checkEmailVerification } = useAuth();
+export default function Profile() {
+  const { user } = useAuth();
+  const [profile, setProfile] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  const [form, setForm] = useState({
-    name: user?.email || "",
-    education: "",
-    skills: "",
-    experience: "",
-    projects: "",
-    role: "",
-    resume_url: ""
-  });
+  // Basic Info
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [targetRoleId, setTargetRoleId] = useState("");
+  const [targetRoleError, setTargetRoleError] = useState("");
+  const [experienceLevel, setExperienceLevel] = useState("");
+
+  // Education
+  const [education, setEducation] = useState([]);
+
+  // Skills
+  const [skills, setSkills] = useState([]);
+  const [skillError, setSkillError] = useState("");
+
+  // Projects
+  const [projects, setProjects] = useState([]);
+
+  // Learning Goals & Weak Areas
+  const [learningGoals, setLearningGoals] = useState([]);
+  const [weakAreas, setWeakAreas] = useState([]);
+
+  // Resume
+  const [resumeUrl, setResumeUrl] = useState("");
+  const [resumeId, setResumeId] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
-  const [resumeUploadError, setResumeUploadError] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState("");
-  const [animateDelete, setAnimateDelete] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
-  const [savedPulse, setSavedPulse] = useState(false);
+  const [showResumeViewer, setShowResumeViewer] = useState(false);
   const fileInputRef = useRef(null);
 
-  const [verifyStatus, setVerifyStatus] = useState("idle"); // idle | sending | sent | checking | error
-  const [verifyMessage, setVerifyMessage] = useState("");
+  // Toasts
+  const [toast, setToast] = useState(null);
 
+  const showToast = useCallback((msg, type = "success") => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3000);
+  }, []);
+
+  // Load
   useEffect(() => {
-    if (profile) {
-      setForm({
-        name: profile.name || user?.email || "",
-        education: profile.education || "",
-        skills: profile.skills || "",
-        experience: profile.experience || "",
-        projects: profile.projects || "",
-        role: profile.role || "",
-        resume_url: profile.resume_url || ""
-      });
-    }
-  }, [profile, user]);
+    (async () => {
+      try {
+        const data = await getProfile();
+        const p = data?.profile || {};
+        setProfile(p);
+        setFirstName(p.first_name || "");
+        setLastName(p.last_name || "");
+        setTargetRoleId(p.target_role_id || "");
+        setExperienceLevel(p.experience_level || "");
+        setEducation(p.education || []);
+        setSkills(p.skills || []);
+        setProjects(p.projects || []);
+        setLearningGoals(p.learning_goals || []);
+        setWeakAreas(p.weak_areas || []);
+        setResumeUrl(p.resume_url || "");
+        setResumeId(p.resume_id || null);
+      } catch (e) { console.error(e); } finally { setLoading(false); }
+    })();
+  }, []);
 
-  const completeness = useMemo(() => {
-    const trackedFields = ["role", "education", "skills", "experience", "projects"];
-    const filled = trackedFields.filter((key) => form[key] && form[key].trim().length > 0).length;
-    return Math.round((filled / trackedFields.length) * 100);
-  }, [form]);
+  const initials = getInitials(firstName, lastName, user?.email);
 
-  const initials = getInitials(form.name, user?.email);
-
-  const handleChange = (event) => {
-    setForm({ ...form, [event.target.name]: event.target.value });
+  // Save basic info
+  const handleSaveBasic = async () => {
+    try {
+      await saveProfile({ first_name: firstName, last_name: lastName, target_role_id: targetRoleId || null, experience_level: experienceLevel });
+      showToast("Profile saved");
+    } catch (e) { showToast(e?.message || "Failed to save", "error"); }
   };
 
-  const handleSubmit = (event) => {
-    event.preventDefault();
-    const res = onSave(form);
-    if (res && typeof res.then === "function") {
-      setIsSaving(true);
-      res
-        .then(() => {
-          setSavedPulse(true);
-          setTimeout(() => setSavedPulse(false), 1800);
-        })
-        .finally(() => setIsSaving(false));
-    }
+  // ─── Education ───
+  const handleAddEducation = async () => {
+    try {
+      const res = await addEducation({});
+      setEducation(prev => [...prev, res]);
+      showToast("Education added");
+    } catch (e) { showToast(e?.message || "Failed", "error"); }
   };
 
-  const uploadResume = async (file) => {
+  const handleUpdateEdu = async (id, data) => {
+    try {
+      const res = await updateEducation(id, data);
+      setEducation(prev => prev.map(e => e.id === id ? { ...e, ...res } : e));
+    } catch (e) { showToast(e?.message || "Failed to update", "error"); }
+  };
+
+  const handleDeleteEdu = async (id) => {
+    try {
+      await deleteEducation(id);
+      setEducation(prev => prev.filter(e => e.id !== id));
+      showToast("Education deleted");
+    } catch (e) { showToast(e?.message || "Failed to delete", "error"); }
+  };
+
+  // ─── Skills ───
+  const handleAddSkill = async (skillId) => {
+    if (skills.length >= 50) { setSkillError("Maximum 50 skills"); return; }
+    if (skills.some(s => s.id === skillId)) return;
+    setSkillError("");
+    try {
+      await addSkill(skillId);
+      const data = await getProfile();
+      setSkills(data.profile.skills || []);
+    } catch (e) { showToast(e?.message || "Failed to add skill", "error"); }
+  };
+
+  const handleRemoveSkill = async (skillId) => {
+    try {
+      await removeSkill(skillId);
+      setSkills(prev => prev.filter(s => s.id !== skillId));
+    } catch (e) { showToast(e?.message || "Failed to remove skill", "error"); }
+  };
+
+  // ─── Projects ───
+  const handleAddProject = async () => {
+    try {
+      const res = await addProject({ project_name: "New Project" });
+      setProjects(prev => [...prev, { ...res, tech_stack: [] }]);
+      showToast("Project added");
+    } catch (e) { showToast(e?.message || "Failed", "error"); }
+  };
+
+  const handleUpdateProject = async (id, data) => {
+    try {
+      const res = await updateProject(id, data);
+      setProjects(prev => prev.map(p => p.id === id ? { ...p, ...res } : p));
+    } catch (e) { showToast(e?.message || "Failed to update", "error"); }
+  };
+
+  const handleDeleteProject = async (id) => {
+    try {
+      await deleteProject(id);
+      setProjects(prev => prev.filter(p => p.id !== id));
+      showToast("Project deleted");
+    } catch (e) { showToast(e?.message || "Failed to delete", "error"); }
+  };
+
+  const handleProjectSkillAdd = async (projectId, skillId) => {
+    const project = projects.find(p => p.id === projectId);
+    const curIds = (project?.tech_stack || []).map(s => s.id);
+    if (curIds.includes(skillId)) return;
+    try {
+      await updateProject(projectId, { ...project, skill_ids: [...curIds, skillId] });
+      const data = await getProfile();
+      setProjects(data.profile.projects || []);
+    } catch { showToast("Failed", "error"); }
+  };
+
+  const handleProjectSkillRemove = async (projectId, skillId) => {
+    const project = projects.find(p => p.id === projectId);
+    const curIds = (project?.tech_stack || []).map(s => s.id).filter(id => id !== skillId);
+    try {
+      await updateProject(projectId, { ...project, skill_ids: curIds });
+      setProjects(prev => prev.map(p =>
+        p.id === projectId ? { ...p, tech_stack: (p.tech_stack || []).filter(s => s.id !== skillId) } : p
+      ));
+    } catch { showToast("Failed", "error"); }
+  };
+
+  // ─── Learning Goals & Weak Areas ───
+  const handleToggleGoal = async (goal) => {
+    const next = learningGoals.includes(goal)
+      ? learningGoals.filter(g => g !== goal)
+      : [...learningGoals, goal];
+    setLearningGoals(next);
+    try { await saveLearningGoals(next); } catch { showToast("Failed", "error"); }
+  };
+
+  const handleToggleWeak = async (wa) => {
+    const next = weakAreas.includes(wa)
+      ? weakAreas.filter(w => w !== wa)
+      : [...weakAreas, wa];
+    setWeakAreas(next);
+    try { await saveWeakAreas(next); } catch { showToast("Failed", "error"); }
+  };
+
+  // ─── Resume ───
+  const handleResumeUpload = async (file) => {
     if (!file) return;
     setIsUploading(true);
-    setResumeUploadError("");
-    const formData = new FormData();
-    formData.append("resume", file);
-    formData.append("userId", user.id);
-
     try {
-      const result = await onResumeUpload(formData);
-      if (result?.profile) {
-        setForm((prev) => ({ ...prev, resume_url: result.profile.resume_url }));
+      const fd = new FormData();
+      fd.append("resume", file);
+      const result = await uploadResume(fd);
+      if (result?.profile?.resume_url) {
+        setResumeUrl(result.profile.resume_url);
+        setResumeId(result.profile.resume_id);
       }
-    } catch (err) {
-      console.error("Resume upload failed:", err);
-      setResumeUploadError(err?.message || "Upload failed: internal error");
-    } finally {
-      setIsUploading(false);
-    }
+      showToast("Resume uploaded");
+    } catch (e) { showToast(e.message || "Upload failed", "error"); } finally { setIsUploading(false); }
   };
 
-  const handleResumeInputChange = (event) => {
-    const file = event.target.files[0];
-    uploadResume(file);
-  };
-
-  const handleDrop = (event) => {
-    event.preventDefault();
-    setIsDragging(false);
-    const file = event.dataTransfer.files?.[0];
-    if (file) uploadResume(file);
-  };
-
-  const handleResendVerification = async () => {
-    setVerifyStatus("sending");
-    setVerifyMessage("");
+  const handleDeleteResume = async () => {
+    setIsDeleting(true);
     try {
-      await resendVerificationEmail();
-      setVerifyStatus("sent");
-      setVerifyMessage("Verification email sent — check your inbox.");
-    } catch (err) {
-      setVerifyStatus("error");
-      setVerifyMessage("Couldn't send the email. Try again in a moment.");
-    }
+      await deleteResume(resumeId);
+      setResumeUrl("");
+      setResumeId(null);
+      setShowDeleteConfirm(false);
+      showToast("Resume deleted");
+    } catch (e) { showToast(e.message || "Delete failed", "error"); } finally { setIsDeleting(false); }
   };
 
-  const handleCheckVerification = async () => {
-    setVerifyStatus("checking");
-    setVerifyMessage("");
-    try {
-      const isVerified = await checkEmailVerification();
-      if (!isVerified) {
-        setVerifyStatus("idle");
-        setVerifyMessage("Still not verified yet — click the link in your email first.");
-      }
-      // If verified, user.is_verified flips via context re-sync and this
-      // panel naturally swaps to the "Verified" state on next render.
-    } catch (err) {
-      setVerifyStatus("error");
-      setVerifyMessage("Couldn't check status. Try again.");
-    }
-  };
+  // ─── Completion & Modules ───
+  const completion = profile?.completion || { percentage: 0, missing: [] };
+  const modules = profile?.modules || {};
 
-  const resumeFileName = form.resume_url ? decodeURIComponent(form.resume_url.split("/").pop() || "resume.pdf") : null;
+  if (loading) return <div className="profile-page"><LoadingSpinner label="Loading profile..." /></div>;
+
+  const resumeFileName = resumeUrl ? decodeURIComponent(resumeUrl.split("/").pop() || "resume.pdf") : null;
 
   return (
-    <>
     <div className="profile-page">
       <div className="profile-header">
-        <span className="profile-eyebrow">CANDIDATE DOSSIER</span>
+        <span className="profile-eyebrow">PROFILE</span>
         <h1 className="profile-title">Your Profile</h1>
       </div>
 
       <div className="profile-grid">
-        {/* ---------- Sidebar: identity + scan ring + verification + resume slot ---------- */}
+        {/* ─── Sidebar ─── */}
         <aside className="profile-sidebar">
-          <div className="identity-card">
+          <div className="card identity-card">
             <div className="scan-ring-wrapper">
               <svg className="scan-ring" viewBox="0 0 120 120">
                 <circle className="scan-ring-track" cx="60" cy="60" r="52" />
-                <circle
-                  className="scan-ring-progress"
-                  cx="60"
-                  cy="60"
-                  r="52"
-                  style={{
-                    strokeDasharray: 2 * Math.PI * 52,
-                    strokeDashoffset: 2 * Math.PI * 52 * (1 - completeness / 100),
-                  }}
-                />
+                <circle className="scan-ring-progress" cx="60" cy="60" r="52"
+                  style={{ strokeDasharray: 2 * Math.PI * 52, strokeDashoffset: 2 * Math.PI * 52 * (1 - completion.percentage / 100) }} />
               </svg>
               <div className="avatar-core">{initials}</div>
             </div>
-
-            <p className="identity-name">{form.name || "Unnamed candidate"}</p>
-            <p className="identity-email">
-              {user?.email}
-              {user?.is_verified && (
-                <span className="verified-chip" title="Email verified">
-                  <svg className="verified-chip-icon" viewBox="0 0 24 24" fill="none">
-                    <path d="M5 12.5l4.5 4.5L19 7.5" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                  Verified
-                </span>
-              )}
-            </p>
-
+            <p className="identity-name">{firstName || lastName ? `${firstName} ${lastName}` : "Your Name"}</p>
+            <p className="identity-email">{user?.email}</p>
             <div className="completeness-readout">
-              <span className="completeness-value">{completeness}%</span>
-              <span className="completeness-label">PROFILE COMPLETE</span>
+              <span className="completeness-value">{completion.percentage}%</span>
+              <span className="completeness-label">COMPLETE</span>
             </div>
-          </div>
-
-          {!user?.is_verified && (
-            <div className="verify-card">
-              <div className="verify-card-header">
-                <svg className="verify-status-icon" viewBox="0 0 24 24" fill="none">
-                  <path
-                    d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 5h14a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z"
-                    stroke="#fbbf24"
-                    strokeWidth="1.6"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-                <span className="section-label">EMAIL STATUS</span>
-              </div>
-
-              <div className="unverified-state">
-                <p className="verify-hint">Your email isn't verified yet. Verify it to unlock full access to your account.</p>
-
-                <div className="verify-actions">
-                  <button
-                    type="button"
-                    className="verify-button verify-button-primary"
-                    onClick={handleResendVerification}
-                    disabled={verifyStatus === "sending"}
-                  >
-                    {verifyStatus === "sending" ? "Sending..." : "Resend verification email"}
-                  </button>
-
-                  <button
-                    type="button"
-                    className="verify-button verify-button-secondary"
-                    onClick={handleCheckVerification}
-                    disabled={verifyStatus === "checking"}
-                  >
-                    {verifyStatus === "checking" ? "Checking..." : "I've verified — refresh status"}
-                  </button>
-                </div>
-
-                {verifyMessage && <p className="verify-message">{verifyMessage}</p>}
-              </div>
-            </div>
-          )}
-
-          <div className={`resume-card ${animateDelete ? "animate-delete" : ""}`}>
-            <span className="section-label">RESUME</span>
-
-            {/* Icon-only delete button overlay (opens in-app confirmation) */}
-            {form.resume_url && (
-              <button
-                type="button"
-                className="delete-resume-button"
-                aria-label="Delete resume"
-                title="Delete resume"
-                disabled={isDeleting}
-                onClick={() => {
-                  setDeleteError("");
-                  setShowDeleteConfirm(true);
-                }}
-              >
-                <svg className="delete-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <path d="M3 6h18" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-                  <path d="M8 6v12a2 2 0 002 2h4a2 2 0 002-2V6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-                  <path d="M10 11v4M14 11v4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-                  <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-                <span className="sr-only">Delete resume</span>
-              </button>
-            )}
-
-            <div
-              className={`resume-dropzone ${isDragging ? "is-dragging" : ""} ${form.resume_url ? "has-file" : ""}`}
-              onClick={() => fileInputRef.current?.click()}
-              onDragOver={(e) => {
-                e.preventDefault();
-                setIsDragging(true);
-              }}
-              onDragLeave={() => setIsDragging(false)}
-              onDrop={handleDrop}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") fileInputRef.current?.click();
-              }}
-            >
-              <input
-                ref={fileInputRef}
-                id="resume-input"
-                type="file"
-                accept="application/pdf"
-                onChange={handleResumeInputChange}
-                hidden
-              />
-              <svg className="dropzone-icon" viewBox="0 0 24 24" fill="none">
-                <path d="M12 3v12m0 0l-4-4m4 4l4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                <path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-              </svg>
-
-              {form.resume_url ? (
-                <>
-                  <p className="dropzone-text">{resumeFileName}</p>
-                  <span className="dropzone-hint">Drop a new file to replace</span>
-                </>
-              ) : (
-                <>
-                  <p className="dropzone-text">Drop your resume here</p>
-                  <span className="dropzone-hint">or click to browse — PDF only</span>
-                </>
-              )}
-            </div>
-
-              {resumeUploadError && (
-                <p className="resume-upload-error" role="alert">{resumeUploadError}</p>
-              )}
-
-            {form.resume_url && (
-              <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                <a href={form.resume_url} target="_blank" rel="noreferrer" className="resume-view-link">
-                  View current resume →
-                </a>
-                {deleteError && <span className="resume-delete-error">{deleteError}</span>}
+            {completion.missing?.length > 0 && (
+              <div className="missing-section">
+                <span className="missing-label">Missing</span>
+                {completion.missing.map(m => <span key={m} className="missing-tag">{m}</span>)}
               </div>
             )}
           </div>
-        </aside>
 
-        {/* ---------- Main: editable fields ---------- */}
-        <form onSubmit={handleSubmit} className="profile-form">
-          <div className="form-section">
-            <span className="section-label">IDENTITY</span>
-            <div className="field">
-              <label htmlFor="name">Name</label>
-              <input id="name" name="name" value={form.name} onChange={handleChange} required />
-            </div>
-          </div>
-
-          <div className="form-section">
-            <span className="section-label">DATA MATRIX</span>
-            {FIELDS.map(({ key, label, type, placeholder }) => (
-              <div className="field" key={key}>
-                <label htmlFor={key}>{label}</label>
-                {type === "textarea" ? (
-                  <textarea
-                    id={key}
-                    name={key}
-                    value={form[key]}
-                    onChange={handleChange}
-                    rows={3}
-                    placeholder={placeholder}
-                  />
-                ) : (
-                  <input
-                    id={key}
-                    name={key}
-                    value={form[key]}
-                    onChange={handleChange}
-                    placeholder={placeholder}
-                  />
-                )}
+          <div className="card modules-card">
+            <span className="card-label">MODULES</span>
+            {[
+              { key: "general_aptitude", label: "General Aptitude" },
+              { key: "communication", label: "Communication" },
+              { key: "technical_interview", label: "Technical Interview" },
+              { key: "coding_interview", label: "Coding Interview" },
+              { key: "resume_analysis", label: "Resume Analysis" },
+              { key: "learning_roadmap", label: "Learning Roadmap" },
+              { key: "project_viva", label: "Project Viva" },
+            ].map(m => (
+              <div key={m.key} className={`module-row ${modules[m.key] === "unlocked" ? "unlocked" : "locked"}`}>
+                <span className="module-icon">{modules[m.key] === "unlocked" ? "✓" : "🔒"}</span>
+                <span className="module-name">{m.label}</span>
               </div>
             ))}
           </div>
+        </aside>
 
-          <div className="form-footer">
-            <button type="submit" className="save-button" disabled={isSaving}>
-              {isSaving ? (
-                <span className="terminal-status">
-                  Saving
-                  <span className="loading-dots"><span /><span /><span /></span>
-                </span>
-              ) : savedPulse ? (
-                "✓ Saved"
-              ) : (
-                "Save Profile"
-              )}
-            </button>
+        {/* ─── Main ─── */}
+        <div className="profile-main">
+
+          {/* 1. Basic Information */}
+          <div className="card section-card">
+            <span className="card-label">BASIC INFORMATION</span>
+            <div className="section-fields">
+              <div className="field">
+                <label>First Name</label>
+                <input value={firstName} onChange={e => setFirstName(e.target.value)} onBlur={handleSaveBasic} />
+              </div>
+              <div className="field">
+                <label>Last Name</label>
+                <input value={lastName} onChange={e => setLastName(e.target.value)} onBlur={handleSaveBasic} />
+              </div>
+              <div className="field">
+                <label>Email</label>
+                <input value={user?.email || ""} disabled className="field-readonly" />
+              </div>
+            </div>
           </div>
-        </form>
+
+          {/* 2. Academic Information */}
+          <div className="card section-card">
+            <div className="card-header">
+              <span className="card-label">ACADEMIC INFORMATION</span>
+              <button className="btn-add" onClick={handleAddEducation}>+ Add</button>
+            </div>
+            {education.map((edu) => (
+              <EduCard key={edu.id} edu={edu} onUpdate={handleUpdateEdu} onDelete={handleDeleteEdu} />
+            ))}
+            {education.length === 0 && <p className="empty-hint">No education records yet.</p>}
+          </div>
+
+          {/* 3. Target Role */}
+          <div className="card section-card">
+            <span className="card-label">TARGET ROLE <span className="required">*</span></span>
+            <AutocompleteInput
+              value={targetRoleId ? (profile?.target_role_name || "") : ""}
+              onChange={v => { setTargetRoleId(v); setTargetRoleError(""); }}
+              onBlur={() => { if (!targetRoleId) setTargetRoleError("Please select a valid role."); }}
+              search={searchRoles}
+              placeholder="Search for a role..."
+              error={targetRoleError}
+            />
+            <p className="field-hint">Used for AI interview generation and learning roadmap.</p>
+          </div>
+
+          {/* 4. Skills */}
+          <div className="card section-card">
+            <span className="card-label">SKILLS <span className="required">*</span> <span className="card-sublabel">(max 50)</span></span>
+            <div className="chips-wrap">
+              {skills.map(s => (
+                <span key={s.id} className="chip">
+                  {s.name}
+                  {s.category && <span className="chip-cat">{s.category}</span>}
+                  <button className="chip-remove" onClick={() => handleRemoveSkill(s.id)}>&times;</button>
+                </span>
+              ))}
+            </div>
+            <AutocompleteInput
+              value=""
+              onChange={v => { if (v) handleAddSkill(v); }}
+              search={searchSkills}
+              placeholder="Type to search skills..."
+              error={skillError}
+              clearOnSelect
+            />
+          </div>
+
+          {/* 5. Experience Level */}
+          <div className="card section-card">
+            <span className="card-label">EXPERIENCE LEVEL</span>
+            <select value={experienceLevel} onChange={e => { setExperienceLevel(e.target.value); saveProfile({ first_name: firstName, last_name: lastName, target_role_id: targetRoleId || null, experience_level: e.target.value }); }}>
+              <option value="">Select...</option>
+              {EXPERIENCE_LEVELS.map(l => <option key={l} value={l}>{l}</option>)}
+            </select>
+          </div>
+
+          {/* 6. Projects */}
+          <div className="card section-card">
+            <div className="card-header">
+              <span className="card-label">PROJECTS</span>
+              <button className="btn-add" onClick={handleAddProject}>+ Add</button>
+            </div>
+            {projects.map((proj) => (
+              <ProjectCard
+                key={proj.id}
+                project={proj}
+                onUpdate={handleUpdateProject}
+                onDelete={handleDeleteProject}
+                onSkillAdd={handleProjectSkillAdd}
+                onSkillRemove={handleProjectSkillRemove}
+              />
+            ))}
+            {projects.length === 0 && <p className="empty-hint">No projects yet.</p>}
+          </div>
+
+          {/* 7. Resume */}
+          <div className="card section-card">
+            <span className="card-label">RESUME</span>
+            {resumeUrl ? (
+              <div className="resume-status">
+                <span className="resume-filename">{resumeFileName}</span>
+                <div className="resume-actions">
+                  <button className="btn-link" onClick={() => setShowResumeViewer(true)}>View</button>
+                  <button className="btn-sm" onClick={() => fileInputRef.current?.click()}>Replace</button>
+                  <button className="btn-sm btn-danger" onClick={() => setShowDeleteConfirm(true)}>Delete</button>
+                </div>
+              </div>
+            ) : (
+              <div className="resume-dropzone" onClick={() => fileInputRef.current?.click()}>
+                <svg className="dropzone-icon" viewBox="0 0 24 24" fill="none"><path d="M12 3v12m0 0l-4-4m4 4l4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
+                <p className="dropzone-text">Upload your resume (PDF)</p>
+              </div>
+            )}
+            <input ref={fileInputRef} type="file" accept="application/pdf" hidden onChange={e => { const f = e.target.files[0]; if (f) handleResumeUpload(f); }} />
+          </div>
+
+          {/* 8. Learning Goals */}
+          <div className="card section-card">
+            <span className="card-label">LEARNING GOALS</span>
+            <div className="checkbox-grid">
+              {LEARNING_GOALS.map(g => (
+                <label key={g} className={`checkbox-label ${learningGoals.includes(g) ? "checked" : ""}`}>
+                  <input type="checkbox" checked={learningGoals.includes(g)} onChange={() => handleToggleGoal(g)} />
+                  {g}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* 9. Weak Areas */}
+          <div className="card section-card">
+            <span className="card-label">WEAK AREAS</span>
+            <p className="field-hint">Select areas you want the AI to prioritize.</p>
+            <div className="checkbox-grid">
+              {WEAK_AREAS.map(w => (
+                <label key={w} className={`checkbox-label ${weakAreas.includes(w) ? "checked" : ""}`}>
+                  <input type="checkbox" checked={weakAreas.includes(w)} onChange={() => handleToggleWeak(w)} />
+                  {w}
+                </label>
+              ))}
+            </div>
+          </div>
+
+        </div>
       </div>
 
-      {(isUploading || isSaving) && (
-        <div className="profile-overlay">
-          <LoadingSpinner label={isUploading ? "Reading resume..." : "Saving profile..."} />
+      {/* Resume viewer */}
+      {showResumeViewer && (
+        <div className="viewer-modal-overlay" role="dialog" onClick={() => setShowResumeViewer(false)}>
+          <div className="viewer-modal" onClick={e => e.stopPropagation()}>
+            <button className="viewer-close" onClick={() => setShowResumeViewer(false)}>&times;</button>
+            <iframe src={resumeUrl} title="Resume" className="viewer-iframe" />
+          </div>
         </div>
       )}
-    </div>
-      {/* In-app confirmation modal */}
+
+      {/* Resume delete confirmation */}
       {showDeleteConfirm && (
-        <div className="confirm-modal-overlay" role="dialog" aria-modal="true">
+        <div className="confirm-modal-overlay" role="dialog">
           <div className="confirm-modal">
             <p className="confirm-title">Delete resume?</p>
-            <p className="confirm-body">This will permanently remove your resume from your profile and storage. This action cannot be undone.</p>
+            <p className="confirm-body">This action cannot be undone.</p>
             <div className="confirm-actions">
-              <button
-                type="button"
-                className="confirm-button confirm-button-cancel"
-                onClick={() => setShowDeleteConfirm(false)}
-                disabled={isDeleting}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="confirm-button confirm-button-danger"
-                onClick={async () => {
-                  setIsDeleting(true);
-                  setDeleteError("");
-                  try {
-                    await onResumeDelete(profile?.resume_id || form.resume_id);
-                    setShowDeleteConfirm(false);
-                    // animate removal then clear
-                    setAnimateDelete(true);
-                    setTimeout(() => {
-                      setForm((prev) => ({ ...prev, resume_url: "", resume_id: null }));
-                      setAnimateDelete(false);
-                    }, 320);
-                  } catch (err) {
-                    console.error("Failed to delete resume:", err);
-                    setDeleteError(err?.message || "Failed to delete resume.");
-                  } finally {
-                    setIsDeleting(false);
-                  }
-                }}
-              >
-                {isDeleting ? "Deleting…" : "Delete resume"}
-              </button>
+              <button className="confirm-button confirm-button-cancel" onClick={() => setShowDeleteConfirm(false)} disabled={isDeleting}>Cancel</button>
+              <button className="confirm-button confirm-button-danger" onClick={handleDeleteResume} disabled={isDeleting}>{isDeleting ? "Deleting..." : "Delete"}</button>
             </div>
           </div>
         </div>
       )}
-    </>
+
+      {isUploading && <div className="profile-overlay"><LoadingSpinner label="Uploading resume..." /></div>}
+
+      {toast && <div className={`toast toast-${toast.type}`}>{toast.msg}</div>}
+    </div>
   );
 }
 
-export default Profile;
+/* ─── Education Card ─── */
+function EduCard({ edu, onUpdate, onDelete }) {
+  const [deg, setDeg] = useState(edu.degree_id || "");
+  const [sp, setSp] = useState(edu.specialization_id || "");
+  const [inst, setInst] = useState(edu.institution_id || "");
+  const [curYear, setCurYear] = useState(edu.current_year || "");
+  const [gradYear, setGradYear] = useState(edu.graduation_year || "");
+  const [cgpa, setCgpa] = useState(edu.cgpa || "");
+
+  const save = () => onUpdate(edu.id, { degree_id: deg || null, specialization_id: sp || null, institution_id: inst || null, current_year: curYear, graduation_year: gradYear || null, cgpa: cgpa || null });
+
+  return (
+    <div className="sub-card">
+      <div className="sub-card-row">
+        <div className="field"><label>Degree</label>
+          <AutocompleteInput value={edu.degree_name || ""} onChange={setDeg} search={searchDegrees} placeholder="Degree" onSelect={() => setTimeout(save, 100)} />
+        </div>
+        <div className="field"><label>Specialization</label>
+          <AutocompleteInput value={edu.specialization_name || ""} onChange={setSp} search={searchSpecializations} placeholder="Specialization" onSelect={() => setTimeout(save, 100)} />
+        </div>
+      </div>
+      <div className="sub-card-row">
+        <div className="field"><label>Institution</label>
+          <AutocompleteInput value={edu.institution_name || ""} onChange={setInst} search={searchInstitutions} placeholder="Institution" onSelect={() => setTimeout(save, 100)} />
+        </div>
+      </div>
+      <div className="sub-card-row sub-card-row-3">
+        <div className="field"><label>Current Year</label><input value={curYear} onChange={e => setCurYear(e.target.value)} onBlur={save} placeholder="e.g. 3rd Year" /></div>
+        <div className="field"><label>Grad Year</label><input type="number" value={gradYear} onChange={e => setGradYear(e.target.value)} onBlur={save} placeholder="2027" /></div>
+        <div className="field"><label>CGPA</label><input type="number" step="0.01" max="10" value={cgpa} onChange={e => setCgpa(e.target.value)} onBlur={save} placeholder="8.5" /></div>
+      </div>
+      <button className="btn-delete" onClick={() => onDelete(edu.id)}>Remove</button>
+    </div>
+  );
+}
+
+/* ─── Project Card ─── */
+function ProjectCard({ project, onUpdate, onDelete, onSkillAdd, onSkillRemove }) {
+  const [name, setName] = useState(project.project_name || "");
+  const [desc, setDesc] = useState(project.description || "");
+  const [gh, setGh] = useState(project.github_url || "");
+  const [demo, setDemo] = useState(project.live_demo || "");
+  const timer = useRef(null);
+
+  const save = (overrides = {}) => {
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      onUpdate(project.id, { project_name: name, description: desc, github_url: gh, live_demo: demo, ...overrides });
+    }, 400);
+  };
+
+  return (
+    <div className="sub-card">
+      <div className="field"><label>Project Name</label><input value={name} onChange={e => setName(e.target.value)} onBlur={() => save()} /></div>
+      <div className="field"><label>Description</label><textarea rows={2} value={desc} onChange={e => setDesc(e.target.value)} onBlur={() => save()} /></div>
+      <div className="sub-card-row">
+        <div className="field"><label>GitHub URL</label><input value={gh} onChange={e => setGh(e.target.value)} onBlur={() => save()} placeholder="https://github.com/..." /></div>
+        <div className="field"><label>Live Demo</label><input value={demo} onChange={e => setDemo(e.target.value)} onBlur={() => save()} placeholder="https://..." /></div>
+      </div>
+      <div className="field"><label>Tech Stack</label>
+        <div className="chips-wrap">
+          {(project.tech_stack || []).map(s => (
+            <span key={s.id} className="chip chip-sm">{s.name}<button className="chip-remove" onClick={() => onSkillRemove(project.id, s.id)}>&times;</button></span>
+          ))}
+        </div>
+        <AutocompleteInput value="" onChange={v => { if (v) onSkillAdd(project.id, v); }} search={searchSkills} placeholder="Add skill..." clearOnSelect />
+      </div>
+      <button className="btn-delete" onClick={() => onDelete(project.id)}>Remove</button>
+    </div>
+  );
+}

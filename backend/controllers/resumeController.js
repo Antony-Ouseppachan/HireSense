@@ -11,70 +11,41 @@ async function resolveUserId(firebaseUid) {
 async function uploadResume(req, res) {
   try {
     const userId = await resolveUserId(req.user.uid);
-    if (!userId) {
-      return res.status(404).json({ message: "User not found." });
-    }
+    if (!userId) return res.status(404).json({ message: "User not found." });
 
-    if (!req.file) {
-      return res.status(400).json({ message: "Resume PDF file is required." });
-    }
+    if (!req.file) return res.status(400).json({ message: "Resume PDF file is required." });
 
-    const localPath = path.join(process.cwd(), req.file.path || req.file.filename);
+    const localPath = req.file.path;
 
-    // Try uploading to Cloudinary (use raw resource_type for PDFs). If it fails,
-    // fall back to storing locally and record a local URL.
-    let fileUrl;
-    let fileId;
-    let storageProvider = "local";
+    let cloudinaryUrl;
+    let publicId;
 
     try {
       const uploadRes = await cloudinary.uploader.upload(localPath, {
-        resource_type: "auto",
+        resource_type: "raw",
         use_filename: true,
         unique_filename: false,
+        folder: "hiresense/resumes",
       });
-
-      fileUrl = uploadRes.secure_url || uploadRes.url;
-      fileId = uploadRes.public_id;
-      storageProvider = "cloudinary";
-
-      // remove local file after successful cloud upload
-      try {
-        fs.unlinkSync(localPath);
-      } catch (e) {
-        // ignore cleanup errors
-      }
+      cloudinaryUrl = uploadRes.secure_url || uploadRes.url;
+      publicId = uploadRes.public_id;
+      try { fs.unlinkSync(localPath); } catch (e) { /* ignore */ }
     } catch (cloudErr) {
       console.error("Cloudinary upload failed:", cloudErr);
-      // remove any local file we created during upload
-      try {
-        if (fs.existsSync(localPath)) fs.unlinkSync(localPath);
-      } catch (e) {
-        console.error("Failed to remove local file after Cloudinary failure:", e);
-      }
-
+      try { if (fs.existsSync(localPath)) fs.unlinkSync(localPath); } catch (e) { /* ignore */ }
       return res.status(500).json({ message: "Upload failed: internal error" });
     }
 
     const result = await db.query(
-      `INSERT INTO resumes
-         (user_id, file_id, file_url, storage_provider, original_filename, file_size, mime_type, uploaded_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $1)
-       RETURNING id, user_id, file_url`,
-      [
-        userId,
-        fileId,
-        fileUrl,
-        storageProvider,
-        req.file.originalname,
-        req.file.size,
-        req.file.mimetype,
-      ]
+      `INSERT INTO resumes (candidate_id, file_name, cloudinary_url, cloudinary_public_id, file_size, mime_type)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, cloudinary_url`,
+      [userId, req.file.originalname, cloudinaryUrl, publicId, req.file.size, req.file.mimetype]
     );
 
     res.json({
       message: "Resume uploaded successfully.",
-      profile: { resume_url: result.rows[0].file_url },
+      profile: { resume_url: result.rows[0].cloudinary_url, resume_id: result.rows[0].id },
     });
   } catch (error) {
     console.error("Upload resume error", error);
@@ -88,39 +59,28 @@ async function deleteResume(req, res) {
     if (!resumeId) return res.status(400).json({ message: "Invalid resume id." });
 
     const userId = await resolveUserId(req.user.uid);
-    if (!userId) {
-      return res.status(404).json({ message: "User not found." });
-    }
+    if (!userId) return res.status(404).json({ message: "User not found." });
 
     const q = await db.query(
-      `SELECT id, user_id, file_id, storage_provider, uploaded_by FROM resumes WHERE id = $1`,
-      [resumeId]
+      "SELECT id, candidate_id, cloudinary_public_id FROM resumes WHERE id = $1", [resumeId]
     );
 
-    if (q.rows.length === 0) {
-      return res.status(404).json({ message: "Resume not found." });
-    }
+    if (q.rows.length === 0) return res.status(404).json({ message: "Resume not found." });
 
     const resume = q.rows[0];
 
-    // Only the owner/uploader may delete the resume
-    if (resume.user_id !== userId && resume.uploaded_by !== userId) {
-      return res.status(403).json({ message: "Forbidden." });
-    }
+    if (resume.candidate_id !== userId) return res.status(403).json({ message: "Forbidden." });
 
-    // If stored in Cloudinary, remove the remote file first
-    if (resume.storage_provider === "cloudinary") {
+    if (resume.cloudinary_public_id) {
       try {
-        await cloudinary.uploader.destroy(resume.file_id, { resource_type: "raw" });
+        await cloudinary.uploader.destroy(resume.cloudinary_public_id, { resource_type: "raw" });
       } catch (cloudErr) {
-        console.error("Cloudinary delete failed for resume id", resumeId, "file_id", resume.file_id, cloudErr);
+        console.error("Cloudinary delete failed:", cloudErr);
         return res.status(500).json({ message: "Failed to delete resume from storage." });
       }
     }
 
-    // Remove DB record
-    await db.query(`DELETE FROM resumes WHERE id = $1`, [resumeId]);
-
+    await db.query("DELETE FROM resumes WHERE id = $1", [resumeId]);
     return res.json({ message: "Resume deleted." });
   } catch (error) {
     console.error("Delete resume error", error);
@@ -128,7 +88,4 @@ async function deleteResume(req, res) {
   }
 }
 
-module.exports = {
-  uploadResume,
-  deleteResume,
-};
+module.exports = { uploadResume, deleteResume };

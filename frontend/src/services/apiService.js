@@ -66,26 +66,69 @@ export async function checkEmailExists(email) {
 ============================================================ */
 
 export async function getProfile() {
-    const data = await apiRequest("/profile");
-    const profile = data?.profile ?? null;
-    if (!profile) return null;
-
-    // Backend stores the target role as `target_role`; the UI uses `role`.
-    return { ...profile, role: profile.target_role ?? "" };
+    return apiRequest("/profile");
 }
 
 export async function saveProfile(payload) {
-    const { role, resume_url, ...rest } = payload;
-
-    const data = await apiRequest("/profile", {
+    return apiRequest("/profile", {
         method: "POST",
-        body: JSON.stringify({ ...rest, target_role: role ?? "" }),
+        body: JSON.stringify(payload),
     });
+}
 
-    const profile = data?.profile ?? null;
-    if (!profile) return null;
+// Education
+export async function addEducation(data) {
+    return apiRequest("/profile/education", { method: "POST", body: JSON.stringify(data) });
+}
+export async function updateEducation(id, data) {
+    return apiRequest(`/profile/education/${id}`, { method: "PUT", body: JSON.stringify(data) });
+}
+export async function deleteEducation(id) {
+    return apiRequest(`/profile/education/${id}`, { method: "DELETE" });
+}
 
-    return { ...profile, role: profile.target_role ?? "" };
+// Skills
+export async function addSkill(skill_id) {
+    return apiRequest("/profile/skills", { method: "POST", body: JSON.stringify({ skill_id }) });
+}
+export async function removeSkill(skill_id) {
+    return apiRequest(`/profile/skills/${skill_id}`, { method: "DELETE" });
+}
+
+// Projects
+export async function addProject(data) {
+    return apiRequest("/profile/projects", { method: "POST", body: JSON.stringify(data) });
+}
+export async function updateProject(id, data) {
+    return apiRequest(`/profile/projects/${id}`, { method: "PUT", body: JSON.stringify(data) });
+}
+export async function deleteProject(id) {
+    return apiRequest(`/profile/projects/${id}`, { method: "DELETE" });
+}
+
+// Learning Goals & Weak Areas
+export async function saveLearningGoals(goals) {
+    return apiRequest("/profile/learning-goals", { method: "POST", body: JSON.stringify({ goals }) });
+}
+export async function saveWeakAreas(weak_areas) {
+    return apiRequest("/profile/weak-areas", { method: "POST", body: JSON.stringify({ weak_areas }) });
+}
+
+// Autocomplete
+export async function searchRoles(q) {
+    return apiRequest(`/autocomplete/roles?q=${encodeURIComponent(q)}`);
+}
+export async function searchSkills(q) {
+    return apiRequest(`/autocomplete/skills?q=${encodeURIComponent(q)}`);
+}
+export async function searchDegrees(q) {
+    return apiRequest(`/autocomplete/degrees?q=${encodeURIComponent(q)}`);
+}
+export async function searchSpecializations(q) {
+    return apiRequest(`/autocomplete/specializations?q=${encodeURIComponent(q)}`);
+}
+export async function searchInstitutions(q) {
+    return apiRequest(`/autocomplete/institutions?q=${encodeURIComponent(q)}`);
 }
 
 /* ============================================================

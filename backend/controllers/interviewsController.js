@@ -1,11 +1,17 @@
 const db = require("../config/database");
 
+async function resolveUserId(firebaseUid) {
+  const result = await db.query("SELECT id FROM users WHERE firebase_uid = $1", [firebaseUid]);
+  return result.rows.length ? result.rows[0].id : null;
+}
+
 function generateQuestionsFromProfile(profile) {
-  const baseSkills = profile.skills ? profile.skills.split(",").map((skill) => skill.trim()) : [];
-  const targetRole = profile.role || "candidate";
+  const skills = Array.isArray(profile.skills) ? profile.skills : [];
+  const skillNames = skills.map(s => typeof s === "string" ? s : s.name || "").filter(Boolean);
+  const targetRole = profile.target_role_name || profile.target_role || "candidate";
 
   const questions = [
-    { question: `Tell me about a project where you used ${baseSkills[0] || "your primary skill"}.` },
+    { question: `Tell me about a project where you used ${skillNames[0] || "your primary skill"}.` },
     { question: `How did you prepare for the role of ${targetRole}?` },
     { question: "Describe a challenge you faced on a technical task and how you solved it." },
     { question: "What steps do you take to stay calm under interview pressure?" },
@@ -17,7 +23,9 @@ function generateQuestionsFromProfile(profile) {
 
 async function listInterviews(req, res) {
   try {
-    const userId = req.user.userId;
+    const userId = await resolveUserId(req.user.uid);
+    if (!userId) return res.status(404).json({ message: "User not found." });
+
     const result = await db.query(
       "SELECT id, user_id, questions, responses, score, feedback, created_at FROM mock_interviews WHERE user_id = $1 ORDER BY created_at DESC",
       [userId]
@@ -31,18 +39,16 @@ async function listInterviews(req, res) {
 
 async function startMockInterview(req, res) {
   try {
-    const userId = req.user.userId;
-    const { profile } = req.body;
-    if (!profile) {
-      return res.status(400).json({ message: "Profile data is required to generate interview questions." });
-    }
+    const userId = await resolveUserId(req.user.uid);
+    if (!userId) return res.status(404).json({ message: "User not found." });
 
-    const questions = generateQuestionsFromProfile(profile);
+    const { profile, category, difficulty, duration, mode } = req.body;
+    const questions = generateQuestionsFromProfile(profile || {});
     const result = await db.query(
-      `INSERT INTO mock_interviews (user_id, questions, responses, score, feedback, created_at)
-       VALUES ($1, $2, $3, $4, $5, NOW())
-       RETURNING id, user_id, questions, responses, score, feedback, created_at`,
-      [userId, JSON.stringify(questions), JSON.stringify([]), null, JSON.stringify({}),]
+      `INSERT INTO mock_interviews (user_id, questions, responses, score, feedback, category, difficulty, duration, mode, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+       RETURNING id, user_id, questions, responses, score, feedback, category, difficulty, duration, mode, created_at`,
+      [userId, JSON.stringify(questions), JSON.stringify([]), null, JSON.stringify({}), category || "", difficulty || "", duration || 0, mode || ""]
     );
 
     res.status(201).json(result.rows[0]);
@@ -54,7 +60,9 @@ async function startMockInterview(req, res) {
 
 async function getInterviewById(req, res) {
   try {
-    const userId = req.user.userId;
+    const userId = await resolveUserId(req.user.uid);
+    if (!userId) return res.status(404).json({ message: "User not found." });
+
     const { id } = req.params;
     const result = await db.query(
       "SELECT id, user_id, questions, responses, score, feedback, created_at FROM mock_interviews WHERE id = $1 AND user_id = $2",
@@ -74,7 +82,9 @@ async function getInterviewById(req, res) {
 
 async function submitInterviewResponses(req, res) {
   try {
-    const userId = req.user.userId;
+    const userId = await resolveUserId(req.user.uid);
+    if (!userId) return res.status(404).json({ message: "User not found." });
+
     const { id } = req.params;
     const { responses } = req.body;
 
