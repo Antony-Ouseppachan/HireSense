@@ -14,6 +14,8 @@ import {
     registerWithEmail,
     logout as firebaseLogout,
     observeAuthState,
+    resendVerificationEmail as firebaseResendVerification,
+    refreshEmailVerificationStatus,
 } from "../services/authService";
 
 import {
@@ -154,6 +156,26 @@ export function AuthProvider({ children }) {
     };
 
     /* ==========================================================
+       Email Verification
+    ========================================================== */
+
+    const resendVerificationEmail = async () => {
+        await firebaseResendVerification();
+    };
+
+    const checkEmailVerification = async () => {
+        const isVerified = await refreshEmailVerificationStatus();
+
+        if (isVerified) {
+            // Re-sync backend with the refreshed token so is_verified
+            // updates in Neon without needing a dedicated endpoint.
+            await syncUserWithBackend();
+        }
+
+        return isVerified;
+    };
+
+    /* ==========================================================
        Helper Flags
     ========================================================== */
 
@@ -194,6 +216,8 @@ export function AuthProvider({ children }) {
             logout,
 
             refreshUser,
+            resendVerificationEmail,
+            checkEmailVerification,
         }),
         [
             firebaseUser,

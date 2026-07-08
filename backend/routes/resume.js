@@ -1,7 +1,7 @@
 const express = require("express");
 const multer = require("multer");
 const path = require("path");
-const { uploadResume } = require("../controllers/resumeController");
+const { uploadResume, deleteResume } = require("../controllers/resumeController");
 const { authenticateToken } = require("../middleware/authMiddleware");
 
 const uploadDir = process.env.RESUME_UPLOAD_DIR || "uploads/resumes";
@@ -28,5 +28,6 @@ const upload = multer({
 const router = express.Router();
 
 router.post("/upload", authenticateToken, upload.single("resume"), uploadResume);
+router.delete("/:id", authenticateToken, deleteResume);
 
 module.exports = router;

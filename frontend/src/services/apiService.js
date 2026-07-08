@@ -66,14 +66,26 @@ export async function checkEmailExists(email) {
 ============================================================ */
 
 export async function getProfile() {
-    return apiRequest("/profile");
+    const data = await apiRequest("/profile");
+    const profile = data?.profile ?? null;
+    if (!profile) return null;
+
+    // Backend stores the target role as `target_role`; the UI uses `role`.
+    return { ...profile, role: profile.target_role ?? "" };
 }
 
 export async function saveProfile(payload) {
-    return apiRequest("/profile", {
+    const { role, resume_url, ...rest } = payload;
+
+    const data = await apiRequest("/profile", {
         method: "POST",
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ ...rest, target_role: role ?? "" }),
     });
+
+    const profile = data?.profile ?? null;
+    if (!profile) return null;
+
+    return { ...profile, role: profile.target_role ?? "" };
 }
 
 /* ============================================================
@@ -89,6 +101,12 @@ export async function uploadResume(formData) {
         },
         true
     );
+}
+
+export async function deleteResume(id) {
+    return apiRequest(`/resume/${id}`, {
+        method: "DELETE",
+    });
 }
 
 /* ============================================================

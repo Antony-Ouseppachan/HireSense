@@ -1,5 +1,6 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
 import LoadingSpinner from "/src/components/LoadingSpinner.jsx";
+import { useAuth } from "/src/context/AuthContext.jsx";
 import "/src/styles/Profile.css";
 
 const FIELDS = [
@@ -18,7 +19,9 @@ function getInitials(name, email) {
   return source.slice(0, 2).toUpperCase();
 }
 
-function Profile({ user, profile, onSave, onResumeUpload }) {
+function Profile({ user, profile, onSave, onResumeUpload, onResumeDelete }) {
+  const { resendVerificationEmail, checkEmailVerification } = useAuth();
+
   const [form, setForm] = useState({
     name: user?.email || "",
     education: "",
@@ -29,10 +32,18 @@ function Profile({ user, profile, onSave, onResumeUpload }) {
     resume_url: ""
   });
   const [isUploading, setIsUploading] = useState(false);
+  const [resumeUploadError, setResumeUploadError] = useState("");
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+  const [animateDelete, setAnimateDelete] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [savedPulse, setSavedPulse] = useState(false);
   const fileInputRef = useRef(null);
+
+  const [verifyStatus, setVerifyStatus] = useState("idle"); // idle | sending | sent | checking | error
+  const [verifyMessage, setVerifyMessage] = useState("");
 
   useEffect(() => {
     if (profile) {
@@ -77,6 +88,7 @@ function Profile({ user, profile, onSave, onResumeUpload }) {
   const uploadResume = async (file) => {
     if (!file) return;
     setIsUploading(true);
+    setResumeUploadError("");
     const formData = new FormData();
     formData.append("resume", file);
     formData.append("userId", user.id);
@@ -86,6 +98,9 @@ function Profile({ user, profile, onSave, onResumeUpload }) {
       if (result?.profile) {
         setForm((prev) => ({ ...prev, resume_url: result.profile.resume_url }));
       }
+    } catch (err) {
+      console.error("Resume upload failed:", err);
+      setResumeUploadError(err?.message || "Upload failed: internal error");
     } finally {
       setIsUploading(false);
     }
@@ -103,9 +118,40 @@ function Profile({ user, profile, onSave, onResumeUpload }) {
     if (file) uploadResume(file);
   };
 
+  const handleResendVerification = async () => {
+    setVerifyStatus("sending");
+    setVerifyMessage("");
+    try {
+      await resendVerificationEmail();
+      setVerifyStatus("sent");
+      setVerifyMessage("Verification email sent — check your inbox.");
+    } catch (err) {
+      setVerifyStatus("error");
+      setVerifyMessage("Couldn't send the email. Try again in a moment.");
+    }
+  };
+
+  const handleCheckVerification = async () => {
+    setVerifyStatus("checking");
+    setVerifyMessage("");
+    try {
+      const isVerified = await checkEmailVerification();
+      if (!isVerified) {
+        setVerifyStatus("idle");
+        setVerifyMessage("Still not verified yet — click the link in your email first.");
+      }
+      // If verified, user.is_verified flips via context re-sync and this
+      // panel naturally swaps to the "Verified" state on next render.
+    } catch (err) {
+      setVerifyStatus("error");
+      setVerifyMessage("Couldn't check status. Try again.");
+    }
+  };
+
   const resumeFileName = form.resume_url ? decodeURIComponent(form.resume_url.split("/").pop() || "resume.pdf") : null;
 
   return (
+    <>
     <div className="profile-page">
       <div className="profile-header">
         <span className="profile-eyebrow">CANDIDATE DOSSIER</span>
@@ -113,7 +159,7 @@ function Profile({ user, profile, onSave, onResumeUpload }) {
       </div>
 
       <div className="profile-grid">
-        {/* ---------- Sidebar: identity + scan ring + resume slot ---------- */}
+        {/* ---------- Sidebar: identity + scan ring + verification + resume slot ---------- */}
         <aside className="profile-sidebar">
           <div className="identity-card">
             <div className="scan-ring-wrapper">
@@ -134,7 +180,17 @@ function Profile({ user, profile, onSave, onResumeUpload }) {
             </div>
 
             <p className="identity-name">{form.name || "Unnamed candidate"}</p>
-            <p className="identity-email">{user?.email}</p>
+            <p className="identity-email">
+              {user?.email}
+              {user?.is_verified && (
+                <span className="verified-chip" title="Email verified">
+                  <svg className="verified-chip-icon" viewBox="0 0 24 24" fill="none">
+                    <path d="M5 12.5l4.5 4.5L19 7.5" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  Verified
+                </span>
+              )}
+            </p>
 
             <div className="completeness-readout">
               <span className="completeness-value">{completeness}%</span>
@@ -142,8 +198,74 @@ function Profile({ user, profile, onSave, onResumeUpload }) {
             </div>
           </div>
 
-          <div className="resume-card">
+          {!user?.is_verified && (
+            <div className="verify-card">
+              <div className="verify-card-header">
+                <svg className="verify-status-icon" viewBox="0 0 24 24" fill="none">
+                  <path
+                    d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 5h14a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z"
+                    stroke="#fbbf24"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                <span className="section-label">EMAIL STATUS</span>
+              </div>
+
+              <div className="unverified-state">
+                <p className="verify-hint">Your email isn't verified yet. Verify it to unlock full access to your account.</p>
+
+                <div className="verify-actions">
+                  <button
+                    type="button"
+                    className="verify-button verify-button-primary"
+                    onClick={handleResendVerification}
+                    disabled={verifyStatus === "sending"}
+                  >
+                    {verifyStatus === "sending" ? "Sending..." : "Resend verification email"}
+                  </button>
+
+                  <button
+                    type="button"
+                    className="verify-button verify-button-secondary"
+                    onClick={handleCheckVerification}
+                    disabled={verifyStatus === "checking"}
+                  >
+                    {verifyStatus === "checking" ? "Checking..." : "I've verified — refresh status"}
+                  </button>
+                </div>
+
+                {verifyMessage && <p className="verify-message">{verifyMessage}</p>}
+              </div>
+            </div>
+          )}
+
+          <div className={`resume-card ${animateDelete ? "animate-delete" : ""}`}>
             <span className="section-label">RESUME</span>
+
+            {/* Icon-only delete button overlay (opens in-app confirmation) */}
+            {form.resume_url && (
+              <button
+                type="button"
+                className="delete-resume-button"
+                aria-label="Delete resume"
+                title="Delete resume"
+                disabled={isDeleting}
+                onClick={() => {
+                  setDeleteError("");
+                  setShowDeleteConfirm(true);
+                }}
+              >
+                <svg className="delete-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M3 6h18" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                  <path d="M8 6v12a2 2 0 002 2h4a2 2 0 002-2V6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M10 11v4M14 11v4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                <span className="sr-only">Delete resume</span>
+              </button>
+            )}
 
             <div
               className={`resume-dropzone ${isDragging ? "is-dragging" : ""} ${form.resume_url ? "has-file" : ""}`}
@@ -186,10 +308,17 @@ function Profile({ user, profile, onSave, onResumeUpload }) {
               )}
             </div>
 
+              {resumeUploadError && (
+                <p className="resume-upload-error" role="alert">{resumeUploadError}</p>
+              )}
+
             {form.resume_url && (
-              <a href={form.resume_url} target="_blank" rel="noreferrer" className="resume-view-link">
-                View current resume →
-              </a>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                <a href={form.resume_url} target="_blank" rel="noreferrer" className="resume-view-link">
+                  View current resume →
+                </a>
+                {deleteError && <span className="resume-delete-error">{deleteError}</span>}
+              </div>
             )}
           </div>
         </aside>
@@ -254,6 +383,51 @@ function Profile({ user, profile, onSave, onResumeUpload }) {
         </div>
       )}
     </div>
+      {/* In-app confirmation modal */}
+      {showDeleteConfirm && (
+        <div className="confirm-modal-overlay" role="dialog" aria-modal="true">
+          <div className="confirm-modal">
+            <p className="confirm-title">Delete resume?</p>
+            <p className="confirm-body">This will permanently remove your resume from your profile and storage. This action cannot be undone.</p>
+            <div className="confirm-actions">
+              <button
+                type="button"
+                className="confirm-button confirm-button-cancel"
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={isDeleting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="confirm-button confirm-button-danger"
+                onClick={async () => {
+                  setIsDeleting(true);
+                  setDeleteError("");
+                  try {
+                    await onResumeDelete(profile?.resume_id || form.resume_id);
+                    setShowDeleteConfirm(false);
+                    // animate removal then clear
+                    setAnimateDelete(true);
+                    setTimeout(() => {
+                      setForm((prev) => ({ ...prev, resume_url: "", resume_id: null }));
+                      setAnimateDelete(false);
+                    }, 320);
+                  } catch (err) {
+                    console.error("Failed to delete resume:", err);
+                    setDeleteError(err?.message || "Failed to delete resume.");
+                  } finally {
+                    setIsDeleting(false);
+                  }
+                }}
+              >
+                {isDeleting ? "Deleting…" : "Delete resume"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

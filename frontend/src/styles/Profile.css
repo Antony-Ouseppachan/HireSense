@@ -54,6 +54,114 @@
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
 }
 
+/* allow positioning of the delete button */
+.resume-card { position: relative; }
+
+/* Delete (trash) button */
+.delete-resume-button {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  padding: 6px;
+  line-height: 1;
+  transition: transform 160ms cubic-bezier(.2,.9,.3,1), box-shadow 160ms ease, background 160ms ease;
+}
+.delete-resume-button:hover:not(:disabled) {
+  transform: translateY(-2px) scale(1.04);
+  box-shadow: 0 6px 20px rgba(59,130,246,0.12), 0 2px 8px rgba(0,0,0,0.28);
+  background: rgba(255,255,255,0.03);
+}
+.delete-resume-button:active:not(:disabled) {
+  transform: translateY(0) scale(.98) rotate(-4deg);
+}
+.delete-resume-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* show a small trash glyph inside the circular button */
+/* icon inside the button */
+.delete-resume-button .delete-icon {
+  width: 18px;
+  height: 18px;
+  display: block;
+  color: #fff;
+}
+
+.delete-resume-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 6px rgba(59,130,246,0.14), 0 6px 18px rgba(0,0,0,0.28);
+  transform: translateY(-1px) scale(1.02);
+}
+
+.resume-card { overflow: visible; }
+
+/* Confirmation modal */
+.confirm-modal-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(2,6,23,0.6);
+  z-index: 80;
+}
+.confirm-modal {
+  background: rgba(15,23,42,0.96);
+  border: 1px solid rgba(255,255,255,0.04);
+  padding: 20px;
+  border-radius: 12px;
+  width: min(420px, 92%);
+  box-shadow: 0 20px 50px rgba(2,6,23,0.6);
+}
+.confirm-title { font-weight: 800; font-size: 16px; margin: 0 0 8px; }
+.confirm-body { color: #94a3b8; margin: 0 0 18px; font-size: 14px; }
+.confirm-actions { display: flex; gap: 12px; justify-content: flex-end; }
+.confirm-button { padding: 8px 14px; border-radius: 8px; border: none; cursor: pointer; }
+.confirm-button-cancel { background: transparent; color: #cbd5e1; border: 1px solid rgba(255,255,255,0.04); }
+.confirm-button-danger { background: linear-gradient(180deg,#ef4444,#dc2626); color: #fff; }
+
+/* animate the dropzone when a resume is being removed */
+.resume-card.animate-delete .resume-dropzone {
+  transform: translateY(-8px) scale(.98);
+  opacity: 0;
+  transition: transform 320ms ease, opacity 320ms ease;
+}
+.resume-card.animate-delete .resume-view-link {
+  opacity: 0;
+  transform: translateY(-6px);
+  transition: transform 320ms ease, opacity 320ms ease;
+}
+
+.resume-delete-error {
+  color: #fecaca;
+  margin-left: 8px;
+  font-size: 13px;
+}
+
+/* screen-reader only helper */
+.sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
 .section-label {
   display: block;
   font-size: 11px;
@@ -129,10 +237,37 @@
 }
 
 .identity-email {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-wrap: wrap;
   font-size: 13px;
   color: var(--text-secondary, #94a3b8);
   margin-bottom: 18px;
   word-break: break-all;
+}
+
+.verified-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 7px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #3b82f6;
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.verified-chip-icon {
+  width: 10px;
+  height: 10px;
+  flex-shrink: 0;
 }
 
 .completeness-readout {
@@ -156,6 +291,95 @@
   font-weight: 700;
   letter-spacing: 0.1em;
   color: var(--text-secondary, #94a3b8);
+}
+
+.verify-card {
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(251, 191, 36, 0.25);
+  border-radius: 18px;
+  padding: 22px 24px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
+}
+
+.verify-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.verify-card-header .section-label {
+  margin-bottom: 0;
+}
+
+.verify-status-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.unverified-state {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.verify-hint {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary, #94a3b8);
+}
+
+.verify-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.verify-button {
+  padding: 11px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease, opacity 0.2s ease;
+}
+
+.verify-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.verify-button-primary {
+  color: #0b1220;
+  background: #fbbf24;
+  border: 1px solid #fbbf24;
+}
+
+.verify-button-primary:hover:not(:disabled) {
+  background: #fcd34d;
+  transform: translateY(-1px);
+}
+
+.verify-button-secondary {
+  color: #e2e8f0;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.verify-button-secondary:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.verify-message {
+  font-size: 12px;
+  color: var(--text-secondary, #94a3b8);
+  padding-top: 2px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 /* ---------- Resume dropzone ---------- */

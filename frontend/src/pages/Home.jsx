@@ -15,7 +15,7 @@ function Home({ user }) {
           </p>
           <div className="hero-buttons">
             <Link to="/interviews" className="btn-primary">
-              Start Mock Interview
+              Get Started
             </Link>
             <Link to="/dashboard" className="btn-secondary">
               View Dashboard

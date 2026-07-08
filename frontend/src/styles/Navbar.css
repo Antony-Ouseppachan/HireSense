@@ -20,6 +20,50 @@
   transition: all 0.3s ease;
 }
 
+.unverified-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  margin-right: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.1);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  border-radius: 999px;
+  text-decoration: none;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.unverified-badge:hover {
+  background: rgba(251, 191, 36, 0.18);
+  transform: translateY(-1px);
+}
+
+.unverified-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #fbbf24;
+  box-shadow: 0 0 6px rgba(251, 191, 36, 0.7);
+}
+
+.verified-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 10px;
+}
+
+.verified-badge-icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
 .nav-left {
   display: flex;
   align-items: center;
