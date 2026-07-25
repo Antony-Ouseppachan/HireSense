@@ -209,3 +209,72 @@ export async function matchCandidate(payload) {
         body: JSON.stringify(payload),
     });
 }
+
+// ─── Aptitude Assessment (Legacy) ───
+
+export async function getAptitudeHistory() {
+    return apiRequest("/aptitude/history");
+}
+
+export async function getAptitudeResult(id) {
+    return apiRequest(`/aptitude/results/${id}`);
+}
+
+export async function getAptitudeRemarks() {
+    return apiRequest("/aptitude/remarks");
+}
+
+export async function getAptitudeRemarkDetail(id) {
+    return apiRequest(`/aptitude/remarks/${id}`);
+}
+
+// ─── Aptitude V2 (Enterprise Assessment) ────────────────────────────
+
+export async function generateAssessment(profile, difficulty) {
+    return apiRequest("/aptitude/generate", {
+        method: "POST",
+        body: JSON.stringify({ profile, difficulty }),
+    });
+}
+
+export async function getAssessmentStatus(id) {
+    return apiRequest(`/aptitude/assessment/${id}/status`);
+}
+
+export async function getAssessment(id) {
+    return apiRequest(`/aptitude/assessment/${id}`);
+}
+
+export async function startAssessment(id) {
+    return apiRequest(`/aptitude/assessment/${id}/start`, { method: "POST" });
+}
+
+export async function beginAssessment(id) {
+    return apiRequest(`/aptitude/assessment/${id}/begin`, { method: "POST" });
+}
+
+export async function getAssessmentQuestion(id, number) {
+    return apiRequest(`/aptitude/assessment/${id}/question/${number}`);
+}
+
+export async function saveAnswer(id, payload) {
+    return apiRequest(`/aptitude/assessment/${id}/answer`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+    });
+}
+
+export async function logMalpractice(id, payload) {
+    return apiRequest(`/aptitude/assessment/${id}/malpractice`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+    });
+}
+
+export async function completeAssessment(id) {
+    return apiRequest(`/aptitude/assessment/${id}/complete`, { method: "POST" });
+}
+
+export async function cancelAssessment(id) {
+    return apiRequest(`/aptitude/assessment/${id}/cancel`, { method: "POST" });
+}

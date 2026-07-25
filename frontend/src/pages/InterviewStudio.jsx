@@ -10,10 +10,11 @@ import {
   IconLock, IconArrowRight, IconStar, IconAlertCircle, IconRefreshCw,
   IconCaseStudy, IconAnalyze, IconPaper, IconMic, IconBook,
 } from "../components/Icons";
+import LoadingSpinner from "../components/LoadingSpinner";
 import "../styles/InterviewStudio.css";
 
 const CATEGORIES = [
-  { id: "aptitude", title: "Aptitude Tests", icon: "aptitude", description: "Quantitative, logical reasoning & data interpretation", unlocked: true, requirement: null, color: "#38bdf8", modules: ["Quantitative Aptitude", "Logical Reasoning", "Verbal Ability", "Data Interpretation", "Analytical Reasoning"] },
+  { id: "aptitude", title: "AI Aptitude Assessment", icon: "aptitude", description: "Personalized AI-generated aptitude test with live proctoring", unlocked: true, requirement: null, color: "#ffffff", modules: ["Quantitative Aptitude", "Logical Reasoning", "Data Interpretation", "Analytical Thinking", "Pattern Recognition"] },
   { id: "gk", title: "General Knowledge", icon: "globe", description: "Current affairs, science, technology & business", unlocked: true, requirement: null, color: "#34d399", modules: ["Current Affairs", "Science", "Technology", "Computer Basics", "Business", "Geography"] },
   { id: "english", title: "English & Communication", icon: "message", description: "Grammar, vocabulary, fluency & pronunciation", unlocked: true, requirement: null, color: "#fbbf24", modules: ["Grammar", "Vocabulary", "Reading", "Speaking", "Pronunciation", "Listening"] },
   { id: "technical", title: "Technical Interview", icon: "code", description: "AI questions from your tech stack & experience", unlocked: false, requirement: "tech_stack", color: "#f87171", tags: ["Python", "Java", "React", "Node", "SQL", "AWS", "ML"] },
@@ -99,10 +100,7 @@ function InterviewStudio() {
   if (loading) {
     return (
       <div className="studio-container">
-        <div className="studio-loading">
-          <div className="studio-loading-spinner" />
-          <p>Preparing your Interview Studio...</p>
-        </div>
+        <LoadingSpinner label="Preparing your Interview Studio" />
       </div>
     );
   }
@@ -167,7 +165,10 @@ function InterviewStudio() {
                 className={`studio-category-card ${isLocked ? "locked" : ""}`}
                 style={{ "--cat-color": cat.color }}
                 onClick={() => {
-                  if (!isLocked) navigate(`/studio/${cat.id}`);
+                  if (!isLocked) {
+                    if (cat.id === "aptitude") navigate("/aptitude");
+                    else navigate(`/studio/${cat.id}`);
+                  }
                 }}
               >
                 <div className="cat-accent-bar" />

@@ -9,7 +9,7 @@ import {
   addProject, updateProject, deleteProject,
   saveLearningGoals, saveWeakAreas,
   searchRoles, searchSkills, searchDegrees, searchSpecializations, searchInstitutions,
-  uploadResume, deleteResume,
+  deleteResume,
 } from "/src/services/apiService.js";
 import "/src/styles/Profile.css";
 
@@ -62,11 +62,9 @@ export default function Profile() {
   // Resume
   const [resumeUrl, setResumeUrl] = useState("");
   const [resumeId, setResumeId] = useState(null);
-  const [isUploading, setIsUploading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showResumeViewer, setShowResumeViewer] = useState(false);
-  const fileInputRef = useRef(null);
 
   // Toasts
   const [toast, setToast] = useState(null);
@@ -215,21 +213,6 @@ export default function Profile() {
   };
 
   // ─── Resume ───
-  const handleResumeUpload = async (file) => {
-    if (!file) return;
-    setIsUploading(true);
-    try {
-      const fd = new FormData();
-      fd.append("resume", file);
-      const result = await uploadResume(fd);
-      if (result?.profile?.resume_url) {
-        setResumeUrl(result.profile.resume_url);
-        setResumeId(result.profile.resume_id);
-      }
-      showToast("Resume uploaded");
-    } catch (e) { showToast(e.message || "Upload failed", "error"); } finally { setIsUploading(false); }
-  };
-
   const handleDeleteResume = async () => {
     setIsDeleting(true);
     try {
@@ -407,17 +390,14 @@ export default function Profile() {
                 <span className="resume-filename">{resumeFileName}</span>
                 <div className="resume-actions">
                   <button className="btn-link" onClick={() => setShowResumeViewer(true)}>View</button>
-                  <button className="btn-sm" onClick={() => fileInputRef.current?.click()}>Replace</button>
                   <button className="btn-sm btn-danger" onClick={() => setShowDeleteConfirm(true)}>Delete</button>
                 </div>
               </div>
             ) : (
-              <div className="resume-dropzone" onClick={() => fileInputRef.current?.click()}>
-                <svg className="dropzone-icon" viewBox="0 0 24 24" fill="none"><path d="M12 3v12m0 0l-4-4m4 4l4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
-                <p className="dropzone-text">Upload your resume (PDF)</p>
+              <div className="resume-dropzone" style={{ cursor: "default" }}>
+                <p className="dropzone-text" style={{ color: "var(--text-muted)" }}>Upload from Dashboard</p>
               </div>
             )}
-            <input ref={fileInputRef} type="file" accept="application/pdf" hidden onChange={e => { const f = e.target.files[0]; if (f) handleResumeUpload(f); }} />
           </div>
 
           {/* 8. Learning Goals */}
@@ -473,8 +453,6 @@ export default function Profile() {
           </div>
         </div>
       )}
-
-      {isUploading && <div className="profile-overlay"><LoadingSpinner label="Uploading resume..." /></div>}
 
       {toast && <div className={`toast toast-${toast.type}`}>{toast.msg}</div>}
     </div>

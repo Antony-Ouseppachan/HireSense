@@ -5,6 +5,7 @@ import {
     useContext,
     useEffect,
     useMemo,
+    useRef,
     useState,
 } from "react";
 
@@ -32,6 +33,11 @@ export function AuthProvider({ children }) {
     const [backendUser, setBackendUser] = useState(null);
 
     const [loading, setLoading] = useState(true);
+
+    /* Tracks when a Login/Register function is handling the backend
+       sync so the onAuthStateChanged listener doesn't also sync,
+       which would create a race with two concurrent requests. */
+    const loginInProgressRef = useRef(false);
 
     /* ==========================================================
        Sync Firebase user with Express + Neon
@@ -74,8 +80,11 @@ export function AuthProvider({ children }) {
 
                 setFirebaseUser(user);
 
-                // Sync/Login with backend
-                await syncUserWithBackend();
+                // Only sync if a dedicated login/register function is
+                // NOT already handling it, to avoid race conditions.
+                if (!loginInProgressRef.current) {
+                    await syncUserWithBackend();
+                }
 
             } catch (error) {
                 console.error(error);
@@ -93,11 +102,14 @@ export function AuthProvider({ children }) {
     ========================================================== */
 
     const loginWithEmail = async (email, password) => {
-        await firebaseEmailLogin(email, password);
-
-        const backend = await syncUserWithBackend();
-
-        return backend;
+        loginInProgressRef.current = true;
+        try {
+            await firebaseEmailLogin(email, password);
+            const backend = await syncUserWithBackend();
+            return backend;
+        } finally {
+            loginInProgressRef.current = false;
+        }
     };
 
     /* ==========================================================
@@ -105,11 +117,14 @@ export function AuthProvider({ children }) {
     ========================================================== */
 
     const signupWithEmail = async (email, password) => {
-        await registerWithEmail(email, password);
-
-        const backend = await syncUserWithBackend();
-
-        return backend;
+        loginInProgressRef.current = true;
+        try {
+            await registerWithEmail(email, password);
+            const backend = await syncUserWithBackend();
+            return backend;
+        } finally {
+            loginInProgressRef.current = false;
+        }
     };
 
     /* ==========================================================
@@ -117,11 +132,14 @@ export function AuthProvider({ children }) {
     ========================================================== */
 
     const loginWithGoogle = async () => {
-        await firebaseGoogleLogin();
-
-        const backend = await syncUserWithBackend();
-
-        return backend;
+        loginInProgressRef.current = true;
+        try {
+            await firebaseGoogleLogin();
+            const backend = await syncUserWithBackend();
+            return backend;
+        } finally {
+            loginInProgressRef.current = false;
+        }
     };
 
     /* ==========================================================

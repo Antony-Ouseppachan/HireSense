@@ -2,7 +2,7 @@ require("dotenv").config();
 
 const requiredEnvVars = [
     "DATABASE_URL",
-    "PYTHON_API_BASE",
+    "GROQ_API_KEY",
     "FIREBASE_PROJECT_ID",
     "FIREBASE_CLIENT_EMAIL",
     "FIREBASE_PRIVATE_KEY",
@@ -28,7 +28,8 @@ module.exports = {
 
     DATABASE_URL: process.env.DATABASE_URL,
 
-    PYTHON_API_BASE: process.env.PYTHON_API_BASE,
+    GROQ_API_KEY: process.env.GROQ_API_KEY,
+    GROQ_MODEL: process.env.GROQ_MODEL || "llama-3.3-70b-versatile",
 
     FIREBASE: {
         PROJECT_ID: process.env.FIREBASE_PROJECT_ID,

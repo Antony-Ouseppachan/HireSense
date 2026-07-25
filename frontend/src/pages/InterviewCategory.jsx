@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { getProfile, startMockInterview } from "../services/apiService";
+import QuestionLoader from "../components/QuestionLoader";
 import {
   IconBook, IconGlobe, IconMessage, IconCode, IconUser,
   IconTarget, IconBuilding, IconLayout, IconBarChart,
@@ -208,7 +209,9 @@ function InterviewCategory() {
   }
 
   return (
-    <div className="cat-page-container">
+    <>
+      <QuestionLoader visible={starting} />
+      <div className="cat-page-container">
       <div className="cat-bg-glow" style={{ "--cat-color": config.color }} />
 
       <div className="cat-header-section">
@@ -328,6 +331,7 @@ function InterviewCategory() {
         </div>
       </div>
     </div>
+    </>
   );
 }
 
