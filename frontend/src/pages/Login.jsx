@@ -144,9 +144,12 @@ function Login() {
     setLoading(true);
 
     try {
-      await loginWithEmail(email, password);
+      const backend = await loginWithEmail(email, password);
 
-      // AuthContext already syncs backend user
+      if (!backend) {
+        throw new Error("Server connection failed. Please try again.");
+      }
+
       navigate("/dashboard");
 
     } catch (err) {
@@ -154,17 +157,19 @@ function Login() {
       const rawCode = err.code || "auth/login-failed";
       const code = rawCode.replace("auth/", "").toUpperCase().replace(/-/g, "_");
       setErrorCode(code);
-      setError(getAuthErrorMessage(rawCode));
+      setError(err.message || getAuthErrorMessage(rawCode));
 
-      // Check email registration state for access denied overlay
-      try {
-        const checkResult = await checkEmailExists(email);
-        setEmailExists(checkResult.exists);
-      } catch (checkErr) {
-        console.error("Failed to check email exists:", checkErr);
-        setEmailExists(true); // Fallback
+      // Only show Access Denied overlay for Firebase auth errors
+      if (err.code) {
+        try {
+          const checkResult = await checkEmailExists(email);
+          setEmailExists(checkResult.exists);
+        } catch (checkErr) {
+          console.error("Failed to check email exists:", checkErr);
+          setEmailExists(true);
+        }
+        setShowAccessDenied(true);
       }
-      setShowAccessDenied(true);
     } finally {
       setLoading(false);
     }
@@ -180,9 +185,12 @@ function Login() {
     setGoogleLoading(true);
 
     try {
-      await loginWithGoogle();
+      const backend = await loginWithGoogle();
 
-      // AuthContext handles backend sync
+      if (!backend) {
+        throw new Error("Google Sign-In succeeded but server connection failed. Please try again.");
+      }
+
       navigate("/dashboard");
 
     } catch (err) {
@@ -190,7 +198,7 @@ function Login() {
       const rawCode = err.code || "auth/google-login-failed";
       const code = rawCode.replace("auth/", "").toUpperCase().replace(/-/g, "_");
       setErrorCode(code);
-      setError(getAuthErrorMessage(rawCode));
+      setError(err.message || getAuthErrorMessage(rawCode));
     } finally {
       setGoogleLoading(false);
     }
@@ -295,6 +303,21 @@ function Login() {
             {loading ? "Logging in..." : "Login"}
           </button>
         </form>
+
+        {/* ERROR BANNER */}
+        {error && (
+          <div className="auth-error-banner">
+            <svg className="auth-error-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+            <div className="auth-error-details">
+              {errorCode && <span className="auth-error-code">{errorCode}</span>}
+              <span className="auth-error-msg">{error}</span>
+            </div>
+          </div>
+        )}
 
         <div className="auth-divider">OR</div>
 

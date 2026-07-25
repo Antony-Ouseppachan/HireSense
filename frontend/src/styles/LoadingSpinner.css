@@ -1,0 +1,148 @@
+.loading-spinner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  padding: 48px;
+}
+
+.loading-orbit {
+  position: relative;
+  width: 64px;
+  height: 64px;
+}
+
+.loading-orbit-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 1.5px solid transparent;
+  animation: lspin 3s linear infinite;
+}
+
+.lor-outer {
+  inset: 0;
+  border-top-color: rgba(255,255,255,0.22);
+  border-bottom-color: rgba(255,255,255,0.06);
+  animation-duration: 2.8s;
+}
+
+.lor-mid {
+  inset: 6px;
+  border-right-color: rgba(255,255,255,0.1);
+  border-left-color: rgba(255,255,255,0.1);
+  animation-duration: 4.2s;
+  animation-direction: reverse;
+}
+
+.lor-inner {
+  inset: 13px;
+  border-top-color: rgba(255,255,255,0.06);
+  border-bottom-color: rgba(255,255,255,0.06);
+  animation-duration: 6s;
+}
+
+.loading-orbit-core {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.loading-orbit-core::after {
+  content: '';
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.45);
+  box-shadow: 0 0 12px rgba(255,255,255,0.12), 0 0 30px rgba(255,255,255,0.04);
+  animation: lpulse 1.5s ease-in-out infinite;
+}
+
+@keyframes lpulse {
+  0%, 100% { transform: scale(1); opacity: 0.5; }
+  50% { transform: scale(1.35); opacity: 1; }
+}
+
+.loading-orbit-dot {
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.3);
+  animation: ldot 3s linear infinite;
+  top: 50%;
+  left: 50%;
+}
+
+.ldot-outer {
+  width: 4px; height: 4px;
+  margin: -2px 0 0 -2px;
+  animation-duration: 2.8s;
+  animation-name: ldot-outer;
+}
+
+.ldot-mid {
+  width: 3px; height: 3px;
+  margin: -1.5px 0 0 -1.5px;
+  background: rgba(255,255,255,0.18);
+  animation-duration: 4.2s;
+  animation-delay: -1.4s;
+  animation-name: ldot-mid;
+}
+
+.ldot-inner {
+  width: 2px; height: 2px;
+  margin: -1px 0 0 -1px;
+  background: rgba(255,255,255,0.12);
+  animation-duration: 6s;
+  animation-delay: -3s;
+  animation-name: ldot-inner;
+}
+
+@keyframes ldot-outer {
+  0% { transform: rotate(0deg) translateX(32px); opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { transform: rotate(360deg) translateX(32px); opacity: 0; }
+}
+
+@keyframes ldot-mid {
+  0% { transform: rotate(0deg) translateX(26px); opacity: 0; }
+  10% { opacity: 0.8; }
+  90% { opacity: 0.8; }
+  100% { transform: rotate(360deg) translateX(26px); opacity: 0; }
+}
+
+@keyframes ldot-inner {
+  0% { transform: rotate(0deg) translateX(19px); opacity: 0; }
+  10% { opacity: 0.6; }
+  90% { opacity: 0.6; }
+  100% { transform: rotate(360deg) translateX(19px); opacity: 0; }
+}
+
+@keyframes lspin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-spinner-label {
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin: 0;
+  text-transform: uppercase;
+  animation: llabel 2s ease-in-out infinite;
+}
+
+@keyframes llabel {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 0.75; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-orbit-ring { animation: none; border-color: rgba(255,255,255,0.08); }
+  .loading-orbit-dot { animation: none; display: none; }
+  .loading-orbit-core::after { opacity: 0.5; }
+  .loading-spinner-label { animation: none; opacity: 0.6; }
+}

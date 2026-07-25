@@ -1,7 +1,4 @@
-import uuid
-
-from sqlalchemy import Boolean, Column, DateTime, String, func, text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import BigInteger, Boolean, Column, DateTime, String, func
 from sqlalchemy.orm import relationship
 
 from app.database.connection import Base
@@ -10,12 +7,25 @@ from app.database.connection import Base
 class User(Base):
     __tablename__ = "users"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name = Column(String(255), nullable=True)
+    id = Column(BigInteger, primary_key=True)
+    firebase_uid = Column(String(255), nullable=False, unique=True)
     email = Column(String(255), nullable=False, unique=True)
-    is_profile_complete = Column(Boolean, nullable=False, server_default=text("FALSE"), default=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    full_name = Column(String(150), nullable=False)
+    role = Column(String(20), nullable=False)
+    profile_picture_url = Column(String)
+    is_verified = Column(Boolean, default=False)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now())
+    last_login = Column(DateTime, server_default=func.now())
 
     profile = relationship("Profile", back_populates="user", uselist=False)
-    resumes = relationship("Resume", back_populates="user", cascade="all, delete-orphan")
+    resumes = relationship("Resume", back_populates="user", cascade="all, delete-orphan", foreign_keys="Resume.user_id")
     interview_sessions = relationship("InterviewSession", back_populates="user", cascade="all, delete-orphan")
+
+    @property
+    def is_profile_complete(self) -> bool:
+        return self.profile is not None
+
+    @property
+    def name(self) -> str:
+        return self.full_name

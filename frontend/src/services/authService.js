@@ -1,5 +1,3 @@
-// src/services/authService.js
-
 import {
     GoogleAuthProvider,
     createUserWithEmailAndPassword,
@@ -8,6 +6,8 @@ import {
     signOut,
     onAuthStateChanged,
     sendPasswordResetEmail,
+    sendEmailVerification,
+    reload,
 } from "firebase/auth";
 
 import { auth } from "../firebase/config";
@@ -33,6 +33,10 @@ export async function registerWithEmail(email, password) {
         email,
         password
     );
+
+    // Google accounts arrive pre-verified via the federated provider;
+    // email/password accounts need an explicit verification email.
+    await sendEmailVerification(result.user);
 
     return result.user;
 }
@@ -61,6 +65,35 @@ export async function logout() {
 
 export async function forgotPassword(email) {
     await sendPasswordResetEmail(auth, email);
+}
+
+/* ============================================================
+   Email Verification
+============================================================ */
+
+export async function resendVerificationEmail() {
+    const user = auth.currentUser;
+    if (!user) {
+        throw new Error("No authenticated user.");
+    }
+    await sendEmailVerification(user);
+}
+
+/**
+ * Firebase caches `emailVerified` on the client user object and in the
+ * ID token at issue time. After the user clicks the link in their inbox,
+ * we need to (1) reload the client-side user record, and (2) force a
+ * fresh ID token, so the *next* backend call carries an up-to-date
+ * `email_verified` claim for the server to trust.
+ */
+export async function refreshEmailVerificationStatus() {
+    const user = auth.currentUser;
+    if (!user) return false;
+
+    await reload(user);
+    await user.getIdToken(true);
+
+    return user.emailVerified;
 }
 
 /* ============================================================

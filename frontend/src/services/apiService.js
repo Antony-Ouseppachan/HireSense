@@ -76,6 +76,61 @@ export async function saveProfile(payload) {
     });
 }
 
+// Education
+export async function addEducation(data) {
+    return apiRequest("/profile/education", { method: "POST", body: JSON.stringify(data) });
+}
+export async function updateEducation(id, data) {
+    return apiRequest(`/profile/education/${id}`, { method: "PUT", body: JSON.stringify(data) });
+}
+export async function deleteEducation(id) {
+    return apiRequest(`/profile/education/${id}`, { method: "DELETE" });
+}
+
+// Skills
+export async function addSkill(skill_id) {
+    return apiRequest("/profile/skills", { method: "POST", body: JSON.stringify({ skill_id }) });
+}
+export async function removeSkill(skill_id) {
+    return apiRequest(`/profile/skills/${skill_id}`, { method: "DELETE" });
+}
+
+// Projects
+export async function addProject(data) {
+    return apiRequest("/profile/projects", { method: "POST", body: JSON.stringify(data) });
+}
+export async function updateProject(id, data) {
+    return apiRequest(`/profile/projects/${id}`, { method: "PUT", body: JSON.stringify(data) });
+}
+export async function deleteProject(id) {
+    return apiRequest(`/profile/projects/${id}`, { method: "DELETE" });
+}
+
+// Learning Goals & Weak Areas
+export async function saveLearningGoals(goals) {
+    return apiRequest("/profile/learning-goals", { method: "POST", body: JSON.stringify({ goals }) });
+}
+export async function saveWeakAreas(weak_areas) {
+    return apiRequest("/profile/weak-areas", { method: "POST", body: JSON.stringify({ weak_areas }) });
+}
+
+// Autocomplete
+export async function searchRoles(q) {
+    return apiRequest(`/autocomplete/roles?q=${encodeURIComponent(q)}`);
+}
+export async function searchSkills(q) {
+    return apiRequest(`/autocomplete/skills?q=${encodeURIComponent(q)}`);
+}
+export async function searchDegrees(q) {
+    return apiRequest(`/autocomplete/degrees?q=${encodeURIComponent(q)}`);
+}
+export async function searchSpecializations(q) {
+    return apiRequest(`/autocomplete/specializations?q=${encodeURIComponent(q)}`);
+}
+export async function searchInstitutions(q) {
+    return apiRequest(`/autocomplete/institutions?q=${encodeURIComponent(q)}`);
+}
+
 /* ============================================================
    Resume
 ============================================================ */
@@ -89,6 +144,12 @@ export async function uploadResume(formData) {
         },
         true
     );
+}
+
+export async function deleteResume(id) {
+    return apiRequest(`/resume/${id}`, {
+        method: "DELETE",
+    });
 }
 
 /* ============================================================
@@ -147,4 +208,73 @@ export async function matchCandidate(payload) {
         method: "POST",
         body: JSON.stringify(payload),
     });
+}
+
+// ─── Aptitude Assessment (Legacy) ───
+
+export async function getAptitudeHistory() {
+    return apiRequest("/aptitude/history");
+}
+
+export async function getAptitudeResult(id) {
+    return apiRequest(`/aptitude/results/${id}`);
+}
+
+export async function getAptitudeRemarks() {
+    return apiRequest("/aptitude/remarks");
+}
+
+export async function getAptitudeRemarkDetail(id) {
+    return apiRequest(`/aptitude/remarks/${id}`);
+}
+
+// ─── Aptitude V2 (Enterprise Assessment) ────────────────────────────
+
+export async function generateAssessment(profile, difficulty) {
+    return apiRequest("/aptitude/generate", {
+        method: "POST",
+        body: JSON.stringify({ profile, difficulty }),
+    });
+}
+
+export async function getAssessmentStatus(id) {
+    return apiRequest(`/aptitude/assessment/${id}/status`);
+}
+
+export async function getAssessment(id) {
+    return apiRequest(`/aptitude/assessment/${id}`);
+}
+
+export async function startAssessment(id) {
+    return apiRequest(`/aptitude/assessment/${id}/start`, { method: "POST" });
+}
+
+export async function beginAssessment(id) {
+    return apiRequest(`/aptitude/assessment/${id}/begin`, { method: "POST" });
+}
+
+export async function getAssessmentQuestion(id, number) {
+    return apiRequest(`/aptitude/assessment/${id}/question/${number}`);
+}
+
+export async function saveAnswer(id, payload) {
+    return apiRequest(`/aptitude/assessment/${id}/answer`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+    });
+}
+
+export async function logMalpractice(id, payload) {
+    return apiRequest(`/aptitude/assessment/${id}/malpractice`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+    });
+}
+
+export async function completeAssessment(id) {
+    return apiRequest(`/aptitude/assessment/${id}/complete`, { method: "POST" });
+}
+
+export async function cancelAssessment(id) {
+    return apiRequest(`/aptitude/assessment/${id}/cancel`, { method: "POST" });
 }
