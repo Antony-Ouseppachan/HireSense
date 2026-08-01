@@ -55,6 +55,7 @@
 .brand-logo {
   width: 28px;
   height: 28px;
+  color: var(--text-primary);
 }
 
 .brand-text {
@@ -173,18 +174,73 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-shadow: 0 0 10px rgba(29,155,240,0.4), 0 0 24px rgba(29,155,240,0.15), 0 0 48px rgba(29,155,240,0.06);
+}
+
+.user-email-link {
+  text-decoration: none;
+  color: inherit;
+  transition: opacity 0.2s;
+}
+
+.user-email-link:hover .user-email {
+  text-shadow: 0 0 14px rgba(29,155,240,0.6), 0 0 32px rgba(29,155,240,0.25), 0 0 64px rgba(29,155,240,0.1);
+}
+
+[data-theme="light"] .user-email-link:hover .user-email {
+  text-shadow: 0 0 14px rgba(29,155,240,0.5), 0 0 32px rgba(29,155,240,0.2), 0 0 64px rgba(29,155,240,0.08);
+}
+
+.user-badge {
+  position: relative;
+}
+
+.user-badge::after {
+  content: "";
+  position: absolute;
+  inset: -6px -12px;
+  border-radius: 12px;
+  background: radial-gradient(ellipse at center, rgba(29,155,240,0.15) 0%, transparent 70%);
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  pointer-events: none;
+}
+
+.user-badge:hover::after {
+  opacity: 1;
 }
 
 .verified-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  margin-right: 2px;
+  margin-right: 4px;
+}
+
+.verified-badge-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #60a5fa;
+  background: rgba(29, 155, 240, 0.1);
+  border: 1px solid rgba(29, 155, 240, 0.25);
+  border-radius: 50px;
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.verified-badge-text:hover {
+  border-color: rgba(29, 155, 240, 0.5);
 }
 
 .verified-badge-icon {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   flex-shrink: 0;
 }
 
@@ -197,23 +253,23 @@
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--text-muted);
-  background: var(--glass-bg);
-  border: 1px solid var(--border-color);
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.25);
   border-radius: 50px;
   text-decoration: none;
   transition: all 0.2s ease;
 }
 
 .unverified-badge:hover {
-  border-color: var(--hover-glow);
+  border-color: rgba(245, 158, 11, 0.5);
 }
 
 .unverified-dot {
   width: 4px;
   height: 4px;
   border-radius: 50%;
-  background: var(--text-muted);
+  background: #f59e0b;
 }
 
 /* Mobile */

@@ -2,6 +2,7 @@
 import AutocompleteInput from "../components/AutocompleteInput.jsx";
 import LoadingSpinner from "/src/components/LoadingSpinner.jsx";
 import { useAuth } from "/src/context/AuthContext.jsx";
+import { sendEmailVerification } from "firebase/auth";
 import {
   getProfile, saveProfile,
   addEducation, updateEducation, deleteEducation,
@@ -34,7 +35,7 @@ function getInitials(first, last, email) {
 }
 
 export default function Profile() {
-  const { user } = useAuth();
+  const { user, firebaseUser, emailVerified, refreshVerificationStatus } = useAuth();
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -74,6 +75,68 @@ export default function Profile() {
     setTimeout(() => setToast(null), 3000);
   }, []);
 
+  // Email Verification
+  const [verifying, setVerifying] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
+  const cooldownRef = useRef(null);
+  const verificationRef = useRef(null);
+
+  useEffect(() => {
+    if (cooldown > 0) {
+      cooldownRef.current = setInterval(() => {
+        setCooldown((c) => {
+          if (c <= 1) {
+            clearInterval(cooldownRef.current);
+            return 0;
+          }
+          return c - 1;
+        });
+      }, 1000);
+      return () => clearInterval(cooldownRef.current);
+    }
+  }, [cooldown]);
+
+  const handleSendVerification = async () => {
+    if (!firebaseUser || emailVerified || sendingEmail || cooldown > 0) return;
+    setSendingEmail(true);
+    try {
+      const alreadyVerified = await refreshVerificationStatus();
+      if (alreadyVerified) {
+        showToast("Your email is already verified!", "success");
+        return;
+      }
+      await sendEmailVerification(firebaseUser);
+      showToast("Verification email sent successfully.", "success");
+      setCooldown(60);
+    } catch (e) {
+      const msg =
+        e.code === "auth/too-many-requests"
+          ? "Too many requests. Please wait before trying again."
+          : e?.message || "Failed to send verification email.";
+      showToast(msg, "error");
+    } finally {
+      setSendingEmail(false);
+    }
+  };
+
+  const handleRefreshVerification = async () => {
+    if (!firebaseUser || verifying) return;
+    setVerifying(true);
+    try {
+      const verified = await refreshVerificationStatus();
+      if (verified) {
+        showToast("Email verified successfully!", "success");
+      } else {
+        showToast("Email not verified yet. Check your inbox and click the link.", "error");
+      }
+    } catch (e) {
+      showToast(e?.message || "Failed to check verification status.", "error");
+    } finally {
+      setVerifying(false);
+    }
+  };
+
   // Load
   useEffect(() => {
     (async () => {
@@ -95,6 +158,17 @@ export default function Profile() {
       } catch (e) { console.error(e); } finally { setLoading(false); }
     })();
   }, []);
+
+  // Auto-scroll to verification section
+  useEffect(() => {
+    if (loading) return;
+    const hash = window.location.hash;
+    if (hash === "#verification" && verificationRef.current) {
+      setTimeout(() => {
+        verificationRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 200);
+    }
+  }, [loading]);
 
   const initials = getInitials(firstName, lastName, user?.email);
 
@@ -261,6 +335,51 @@ export default function Profile() {
               <div className="missing-section">
                 <span className="missing-label">Missing</span>
                 {completion.missing.map(m => <span key={m} className="missing-tag">{m}</span>)}
+              </div>
+            )}
+          </div>
+
+          {/* ─── Account Verification ─── */}
+          <div className="card verify-card" id="verification" ref={verificationRef}>
+            {emailVerified ? (
+              <div className="verify-verified">
+                <div className="verify-badge-blue">
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="12" r="12" fill="#1D9BF0" />
+                    <path d="M7 12.5l3.5 3.5 6.5-6.5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </div>
+                <span className="verify-status-text">Verified Account</span>
+              </div>
+            ) : (
+              <div className="verify-unverified">
+                <div className="verify-header">
+                  <span className="card-label">ACCOUNT VERIFICATION</span>
+                </div>
+                <div className="verify-warning-icon">⚠</div>
+                <span className="verify-status-text warn">Account Not Verified</span>
+                <p className="verify-desc">Your email address has not been verified. Verify your account to unlock Interview Studio and all premium platform features.</p>
+                <div className="verify-email-display">{firebaseUser?.email}</div>
+                <div className="verify-actions">
+                  <button
+                    className="verify-btn-primary"
+                    onClick={handleSendVerification}
+                    disabled={sendingEmail || cooldown > 0}
+                  >
+                    {cooldown > 0
+                      ? `Resend in ${cooldown}s`
+                      : sendingEmail
+                        ? "Sending..."
+                        : "Send Verification Email"}
+                  </button>
+                  <button
+                    className="verify-btn-secondary"
+                    onClick={handleRefreshVerification}
+                    disabled={verifying}
+                  >
+                    {verifying ? "Checking..." : "Refresh Status"}
+                  </button>
+                </div>
               </div>
             )}
           </div>

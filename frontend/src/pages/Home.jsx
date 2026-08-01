@@ -1,11 +1,11 @@
-﻿import { useEffect, useRef, useState } from "react";
+﻿import { useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useTheme } from "../context/ThemeContext";
+import ParticleBackground from "../components/ParticleBackground";
 import "../styles/Home.css";
 
 function CountUp({ to, duration = 2000, suffix = "" }) {
-  const [val, setVal] = useState(0);
   const ref = useRef(null);
   const hasRun = useRef(false);
 
@@ -16,13 +16,14 @@ function CountUp({ to, duration = 2000, suffix = "" }) {
     const frame = (now) => {
       const t = Math.min((now - start) / duration, 1);
       const eased = 1 - Math.pow(1 - t, 3);
-      setVal(Math.floor(eased * to));
+      const val = Math.floor(eased * to);
+      if (ref.current) ref.current.textContent = `${val}${suffix}`;
       if (t < 1) requestAnimationFrame(frame);
     };
     requestAnimationFrame(frame);
-  }, [to, duration]);
+  }, [to, duration, suffix]);
 
-  return <span ref={ref}>{val}{suffix}</span>;
+  return <span ref={ref}>0{suffix}</span>;
 }
 
 const FEATURES = [
@@ -59,6 +60,8 @@ function Home() {
     <div className="home-root">
       {/* ─── Hero ─── */}
       <section className="hero">
+        {/* Mouse-reactive particle background */}
+        <ParticleBackground />
         {/* Floating background elements */}
         <div className="hero-floating-shapes">
           <div className="hero-float-shape" style={{ top: "20%", left: "8%", width: 60, height: 60, animationDelay: "0s" }} />

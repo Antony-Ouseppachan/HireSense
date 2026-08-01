@@ -9,6 +9,7 @@ import {
   IconClipboard, IconShuffle, IconTrendingUp, IconCheckCircle,
   IconLock, IconArrowRight, IconStar, IconAlertCircle, IconRefreshCw,
   IconCaseStudy, IconAnalyze, IconPaper, IconMic, IconBook,
+  IconMail,
 } from "../components/Icons";
 import LoadingSpinner from "../components/LoadingSpinner";
 import "../styles/InterviewStudio.css";
@@ -49,7 +50,7 @@ function CatIcon({ name, size, color }) {
 }
 
 function InterviewStudio() {
-  const { user } = useAuth();
+  const { user, emailVerified } = useAuth();
   const navigate = useNavigate();
   const [profile, setProfile] = useState(null);
   const [interviews, setInterviews] = useState([]);
@@ -101,6 +102,29 @@ function InterviewStudio() {
     return (
       <div className="studio-container">
         <LoadingSpinner label="Preparing your Interview Studio" />
+      </div>
+    );
+  }
+
+  // Email verification gate
+  if (!emailVerified) {
+    return (
+      <div className="studio-container">
+        <div className="studio-bg-glow" />
+        <div className="studio-verify-gate">
+          <div className="studio-verify-gate-card">
+            <div className="studio-verify-gate-icon">
+              <IconMail size={40} color="#f59e0b" />
+            </div>
+            <h2>Account Verification Required</h2>
+            <p>Verify your email before accessing Interview Studio.</p>
+            <div className="studio-verify-gate-actions">
+              <button className="studio-verify-gate-btn" onClick={() => navigate("/profile#verification")}>
+                Go to Verification
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }

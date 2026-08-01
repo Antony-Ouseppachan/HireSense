@@ -16,7 +16,7 @@ import {
     logout as firebaseLogout,
     observeAuthState,
     resendVerificationEmail as firebaseResendVerification,
-    refreshEmailVerificationStatus,
+    refreshEmailVerificationStatus as firebaseRefreshEmailStatus,
 } from "../services/authService";
 
 import {
@@ -33,6 +33,9 @@ export function AuthProvider({ children }) {
     const [backendUser, setBackendUser] = useState(null);
 
     const [loading, setLoading] = useState(true);
+
+    /* Forces re-render after Firebase user mutation (reload) */
+    const [verifyVersion, setVerifyVersion] = useState(0);
 
     /* Tracks when a Login/Register function is handling the backend
        sync so the onAuthStateChanged listener doesn't also sync,
@@ -182,13 +185,24 @@ export function AuthProvider({ children }) {
     };
 
     const checkEmailVerification = async () => {
-        const isVerified = await refreshEmailVerificationStatus();
+        const isVerified = await firebaseRefreshEmailStatus();
 
         if (isVerified) {
-            // Re-sync backend with the refreshed token so is_verified
-            // updates in Neon without needing a dedicated endpoint.
             await syncUserWithBackend();
         }
+
+        return isVerified;
+    };
+
+    const refreshVerificationStatus = async () => {
+        const isVerified = await firebaseRefreshEmailStatus();
+
+        if (isVerified) {
+            await syncUserWithBackend();
+        }
+
+        /* Force re-render so emailVerified re-evaluates */
+        setVerifyVersion(v => v + 1);
 
         return isVerified;
     };
@@ -196,6 +210,13 @@ export function AuthProvider({ children }) {
     /* ==========================================================
        Helper Flags
     ========================================================== */
+
+    /* verifyVersion forces re-evaluation after reload() */
+    // eslint-disable-next-line no-unused-vars
+    const _vv = verifyVersion;
+
+    const emailVerified =
+        firebaseUser?.emailVerified ?? false;
 
     const isAuthenticated =
         firebaseUser !== null &&
@@ -222,6 +243,7 @@ export function AuthProvider({ children }) {
             user: backendUser,
 
             loading,
+            emailVerified,
 
             isAuthenticated,
             isCandidate,
@@ -236,11 +258,13 @@ export function AuthProvider({ children }) {
             refreshUser,
             resendVerificationEmail,
             checkEmailVerification,
+            refreshVerificationStatus,
         }),
         [
             firebaseUser,
             backendUser,
             loading,
+            emailVerified,
             isAuthenticated,
             isCandidate,
             isRecruiter,
