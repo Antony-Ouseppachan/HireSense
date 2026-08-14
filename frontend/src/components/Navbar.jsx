@@ -3,12 +3,14 @@ import { useEffect, useState } from "react";
 import "../styles/Navbar.css";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
+import { useHonesty } from "../context/HonestyContext";
 import { getProfile } from "../services/apiService";
 import Logo from "./Logo";
 
 function Navbar() {
   const { user, logout, firebaseUser, emailVerified } = useAuth();
   const { theme, toggle } = useTheme();
+  const { honesty } = useHonesty();
   const [scrolled, setScrolled] = useState(false);
   const [displayName, setDisplayName] = useState("");
   const navigate = useNavigate();
@@ -60,6 +62,23 @@ function Navbar() {
         </button>
         {firebaseUser ? (
           <div className="user-badge">
+            {honesty?.warning && (
+              <Link
+                to="/dashboard#honesty"
+                className={`honesty-badge ${honesty.locked ? "honesty-badge-locked" : ""}`}
+                title={honesty.locked
+                  ? "Interview Studio locked — your honesty score is too low. Reattempt a previous assessment honestly to recover."
+                  : `Your honesty score is ${honesty.score}/100. Complete assessments without cheating to improve it.`}
+              >
+                <svg className="honesty-badge-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                  <path d="M12 8v4" />
+                  <circle cx="12" cy="16" r="0.5" fill="currentColor" />
+                </svg>
+                <span className="honesty-badge-score">{honesty.score}</span>
+                <span className="honesty-badge-text">{honesty.locked ? "Studio Locked" : "Integrity Warning"}</span>
+              </Link>
+            )}
             {emailVerified ? (
               <Link to="/profile#verification" className="verified-badge-text" title="Verified Account">
                 <svg className="verified-badge-icon" viewBox="0 0 24 24" fill="none">

@@ -11,12 +11,14 @@ import Aptitude from "./pages/Aptitude";
 import AptitudeTest from "./pages/AptitudeTest";
 import AptitudeResults from "./pages/AptitudeResults";
 import AptitudeHistory from "./pages/AptitudeHistory";
+import AptitudeReview from "./pages/AptitudeReview";
 import Navbar from "./components/Navbar";
 import SplashScreen from "./components/SplashScreen";
 import ThemeAmbient from "./components/ThemeAmbient";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { ThemeProvider } from "./context/ThemeContext";
 import { ExamProvider, useExam } from "./context/ExamContext";
+import { HonestyProvider } from "./context/HonestyContext";
 import ProtectedRoute from "./components/ProtectedRoute";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
@@ -120,6 +122,14 @@ function AppContent() {
                 </ProtectedRoute>
               }
             />
+            <Route
+              path="/aptitude/review/:id"
+              element={
+                <ProtectedRoute>
+                  <AptitudeReview />
+                </ProtectedRoute>
+              }
+            />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
@@ -132,9 +142,11 @@ function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <ExamProvider>
-          <AppContent />
-        </ExamProvider>
+        <HonestyProvider>
+          <ExamProvider>
+            <AppContent />
+          </ExamProvider>
+        </HonestyProvider>
       </AuthProvider>
     </ThemeProvider>
   );

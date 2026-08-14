@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { createPortal } from "react-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "../context/AuthContext";
+import { useHonesty } from "../context/HonestyContext";
 import { getProfile, generateAssessment, getAssessmentStatus } from "../services/apiService";
 import "../styles/Aptitude.css";
 
@@ -49,7 +51,7 @@ function TermsModal({ open, onClose }) {
 
   if (!open) return null;
 
-  return (
+  return createPortal(
     <div className="apt-modal-overlay" onClick={() => { if (!accepted) onClose(); }}>
       <div className="apt-tnc-modal" ref={modalRef} tabIndex={-1} onClick={(e) => e.stopPropagation()}>
         <div className="apt-tnc-header">
@@ -75,7 +77,7 @@ function TermsModal({ open, onClose }) {
           </div>
         </div>
       </div>
-    </div>
+    </div>, document.body
   );
 }
 
@@ -85,6 +87,7 @@ const item = { hidden: { opacity: 0, y: 24 }, show: { opacity: 1, y: 0, transiti
 export default function Aptitude() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { honesty } = useHonesty();
   const [agreed, setAgreed] = useState(false);
   const [selected, setSelected] = useState("medium");
   const [profile, setProfile] = useState(null);
@@ -267,6 +270,22 @@ export default function Aptitude() {
 
         {/* Generation / Start Area */}
         <motion.div className="apt-start-section" variants={item}>
+          {honesty?.locked ? (
+            <div className="apt-lock-notice">
+              <div className="apt-lock-notice-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              </div>
+              <h3>New Assessments Locked</h3>
+              <p>
+                Your honesty score is <strong>{honesty.score}/100</strong>. Until it rises above 75 you can only
+                reattempt your previous assessments. Complete one honestly to recover your score.
+              </p>
+              <Link to="/aptitude/history" className="apt-start-btn" style={{ textDecoration: "none", display: "inline-block" }}>
+                Reattempt a Previous Test
+              </Link>
+            </div>
+          ) : (
+            <>
           {/* Terms agreement */}
           <label className="apt-agreement">
             <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} disabled={generating || genStatus === "ready"} />
@@ -315,6 +334,8 @@ export default function Aptitude() {
               <p className="apt-error-text">{genError || "Generation failed."}</p>
               <button className="apt-start-btn" onClick={handleRetry}>Try Again</button>
             </div>
+          )}
+            </>
           )}
         </motion.div>
       </div>

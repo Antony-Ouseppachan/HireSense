@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
@@ -11,6 +12,7 @@ import {
 import LiveTimer from "../components/LiveTimer";
 import useAntiCheat from "../hooks/useAntiCheat";
 import { useExam } from "../context/ExamContext";
+import { useHonesty } from "../context/HonestyContext";
 import "../styles/Aptitude.css";
 
 const TIME_MAP = { easy: 1200, medium: 2100, hard: 3000 };
@@ -19,6 +21,14 @@ const STEPS = [
   { key: "loading", label: "Loading questions" },
   { key: "fullscreen", label: "Entering secure mode" },
   { key: "starting", label: "Initializing timer" },
+];
+
+const EVAL_STEPS = [
+  "Checking answers",
+  "Calculating score",
+  "Generating analytics",
+  "AI evaluating strengths",
+  "Preparing recommendations",
 ];
 
 function StepIndicator({ steps, currentKey, error }) {
@@ -56,6 +66,37 @@ function StepIndicator({ steps, currentKey, error }) {
   );
 }
 
+function EvalOverlay({ stepIndex }) {
+  return (
+    <div className="apt-eval-overlay">
+      <div className="apt-eval-card">
+        <div className="apt-eval-ring">
+          <div className="apt-eval-ring-inner">
+            <svg viewBox="0 0 24 24" fill="none" width="28" height="28">
+              <circle cx="12" cy="12" r="9" stroke="var(--accent)" strokeWidth="1.5" opacity="0.4" />
+              <path d="M8 12.5l3 3 5.5-6" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
+        </div>
+        <h3 className="apt-eval-title">Evaluating your performance...</h3>
+        <p className="apt-eval-est">Estimated time: 2–5 seconds</p>
+        <div className="apt-eval-list">
+          {EVAL_STEPS.map((label, i) => (
+            <div key={label} className={`apt-eval-step ${i < stepIndex ? "done" : i === stepIndex ? "active" : ""}`}>
+              <span className="apt-eval-step-icon">
+                {i < stepIndex && <svg viewBox="0 0 24 24" fill="none" stroke="#4ADE80" strokeWidth="2.5" width="12" height="12"><polyline points="20 6 9 17 4 12"/></svg>}
+                {i === stepIndex && <div className="apt-loading-spinner" />}
+                {i > stepIndex && <div className="apt-eval-step-dot" />}
+              </span>
+              <span className="apt-eval-step-label">{label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AptitudeTest() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -63,6 +104,8 @@ export default function AptitudeTest() {
   const hasSubmitted = useRef(false);
   const saveTimerRef = useRef(null);
   const timerRef = useRef(null);
+  const timesRef = useRef({});
+  const questionStartRef = useRef(Date.now());
 
   const [questions, setQuestions] = useState([]);
   const [answers, setAnswers] = useState({});
@@ -71,8 +114,10 @@ export default function AptitudeTest() {
   const [current, setCurrent] = useState(0);
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [evalStep, setEvalStep] = useState(0);
   const [started, setStarted] = useState(false);
   const [showWarning, setShowWarning] = useState(null);
+  const [showSubmitModal, setShowSubmitModal] = useState(false);
   const [terminated, setTerminated] = useState(false);
   const [terminationReason, setTerminationReason] = useState("");
   const [difficulty, setDifficulty] = useState("medium");
@@ -80,8 +125,11 @@ export default function AptitudeTest() {
   const [loadingStep, setLoadingStep] = useState(null);
   const [loadingError, setLoadingError] = useState(null);
   const [fullscreenDenied, setFullscreenDenied] = useState(false);
+  const [savedIndicator, setSavedIndicator] = useState(""); // "" | "saving" | "saved"
+  const savedTimeoutRef = useRef(null);
   const warningViolationRef = useRef(null);
   const { enableExamMode, disableExamMode } = useExam();
+  const { refresh: refreshHonesty } = useHonesty();
   const pendingFullscreenRef = useRef(false);
   const beginCalledRef = useRef(false);
 
@@ -103,6 +151,16 @@ export default function AptitudeTest() {
     } catch {
       pendingFullscreenRef.current = false;
       return Promise.resolve(false);
+    }
+  }, []);
+
+  const exitFullscreen = useCallback(() => {
+    try {
+      if (document.fullscreenElement && document.exitFullscreen) {
+        document.exitFullscreen().catch(() => {});
+      }
+    } catch {
+      /* ignore */
     }
   }, []);
 
@@ -133,19 +191,37 @@ export default function AptitudeTest() {
         timerRef.current = timeLimit;
 
         const restored = {};
+        const restoredTimes = {};
         for (const sa of savedAnswers) {
           if (sa.status === "answered" || sa.status === "reviewed") {
             let val = sa.answer;
             try { const p = JSON.parse(val); if (Array.isArray(p)) val = p; } catch {}
             restored[sa.questionNumber - 1] = val;
           }
+          if (sa.timeSpent) restoredTimes[sa.questionNumber - 1] = sa.timeSpent;
         }
+
+        // Crash-restore: overlay any newer localStorage backup
+        try {
+          const backup = JSON.parse(localStorage.getItem(`apt_backup_${assessmentId}`) || "null");
+          if (backup && backup.answers) {
+            for (const [k, v] of Object.entries(backup.answers)) restored[k] = v;
+            if (backup.review) setReview(new Set(backup.review));
+            if (backup.times) {
+              for (const [k, v] of Object.entries(backup.times)) restoredTimes[k] = v;
+            }
+            localStorage.removeItem(`apt_backup_${assessmentId}`);
+          }
+        } catch {}
+
+        timesRef.current = restoredTimes;
 
         setQuestions(qs);
         setAnswers(restored);
 
         const restoredVisited = new Set();
         savedAnswers.forEach((sa) => restoredVisited.add(sa.questionNumber - 1));
+        Object.keys(restored).forEach((k) => restoredVisited.add(Number(k)));
         if (restoredVisited.size > 0) setVisited(restoredVisited);
 
         const saved = sessionStorage.getItem(`apt_remaining_${assessmentId}`);
@@ -197,7 +273,6 @@ export default function AptitudeTest() {
       setFullscreenDenied(true);
       return;
     }
-    // Step 3: Begin assessment
     setLoadingStep("starting");
     try {
       await beginAssessment(assessmentId);
@@ -208,6 +283,14 @@ export default function AptitudeTest() {
       setLoadingError(e.message || "Failed to begin assessment");
     }
   }, [assessmentId, requestFullscreen]);
+
+  // ── Per-question elapsed time ─────────────────────────────────────────
+  const recordElapsed = useCallback((fromIndex) => {
+    const elapsed = Math.max(0, Math.round((Date.now() - questionStartRef.current) / 1000));
+    questionStartRef.current = Date.now();
+    if (fromIndex == null) return;
+    timesRef.current[fromIndex] = (timesRef.current[fromIndex] || 0) + elapsed;
+  }, []);
 
   // ── Periodic save (every 15s) ─────────────────────────────────────────
   useEffect(() => {
@@ -220,34 +303,45 @@ export default function AptitudeTest() {
   }, [started, questions, answers, current]);
 
   // ── Sync answers to server ─────────────────────────────────────────────
-  const syncAnswersToServer = useCallback(async () => {
+  const syncAnswersToServer = useCallback(async (targetIndex = null) => {
     if (!assessmentId || !questions.length) return;
-    const question = questions[current];
+    const idx = targetIndex != null ? targetIndex : current;
+    const question = questions[idx];
     if (!question) return;
-    const val = answers[current];
+    const val = answers[idx];
     if (val == null || val === "" || (Array.isArray(val) && val.length === 0)) return;
+    setSavedIndicator("saving");
     try {
       await saveAnswer(assessmentId, {
         questionId: question.id,
         answer: Array.isArray(val) ? JSON.stringify(val) : String(val ?? ""),
-        timeSpent: 0,
-        status: review.has(current) ? "reviewed" : "answered",
+        timeSpent: timesRef.current[idx] || 0,
+        status: review.has(idx) ? "reviewed" : "answered",
       });
-    } catch { /* ignore */ }
+      setSavedIndicator("saved");
+      if (savedTimeoutRef.current) clearTimeout(savedTimeoutRef.current);
+      savedTimeoutRef.current = setTimeout(() => setSavedIndicator(""), 2500);
+    } catch {
+      setSavedIndicator("");
+    }
   }, [assessmentId, questions, answers, current, review]);
 
-  // ── Save on question change ────────────────────────────────────────────
+  // ── Save current answer on navigation ─────────────────────────────────
   const saveCurrentAnswer = useCallback(() => {
-    syncAnswersToServer();
-  }, [syncAnswersToServer]);
+    syncAnswersToServer(current);
+  }, [syncAnswersToServer, current]);
 
   // ── Anti-cheat ─────────────────────────────────────────────────────────
   const onViolation = useCallback((violation, count) => {
     warningViolationRef.current = violation;
 
+    // Once submitted, the intentional fullscreen exit (and any other events
+    // fired during the redirect) must not count as violations or re-enter
+    // fullscreen.
+    if (hasSubmitted.current) return;
+
     if (violation.type === "fullscreen-exit") {
       pendingFullscreenRef.current = true;
-      // Attempt to restore fullscreen automatically
       requestFullscreen();
     }
 
@@ -264,7 +358,7 @@ export default function AptitudeTest() {
     if (count >= 3) {
       setTerminationReason("Repeated Examination Rule Violations");
       setTerminated(true);
-      handleFinalSubmit(true, count);
+      handleFinalSubmit(true);
     } else {
       setShowWarning(count);
     }
@@ -294,7 +388,7 @@ export default function AptitudeTest() {
       saveAnswer(assessmentId, {
         questionId: question.id,
         answer: Array.isArray(value) ? JSON.stringify(value) : String(value ?? ""),
-        timeSpent: 0,
+        timeSpent: timesRef.current[index] || 0,
         status: "answered",
       }).catch(() => {});
     }
@@ -308,6 +402,20 @@ export default function AptitudeTest() {
     });
   }, [current]);
 
+  // ── localStorage crash backup ─────────────────────────────────────────
+  useEffect(() => {
+    if (!started || !assessmentId) return;
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem(
+          `apt_backup_${assessmentId}`,
+          JSON.stringify({ answers, review: [...review], times: timesRef.current })
+        );
+      } catch {}
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [answers, review, started, assessmentId]);
+
   // ── Timer persistence ──────────────────────────────────────────────────
   useEffect(() => {
     if (!started || questions.length === 0) return;
@@ -318,36 +426,80 @@ export default function AptitudeTest() {
     return () => clearInterval(id);
   }, [started, questions, assessmentId]);
 
-  // ── Submit / Complete ──────────────────────────────────────────────────
+  // ── Keyboard navigation (arrow keys + number shortcuts) ───────────────
+  useEffect(() => {
+    if (!started || submitting || showSubmitModal) return;
+    const goTo = (i) => {
+      const clamped = Math.max(0, Math.min(questions.length - 1, i));
+      recordElapsed(current);
+      saveCurrentAnswer();
+      setCurrent(clamped);
+      setVisited((prev) => new Set(prev).add(clamped));
+    };
+    const onKey = (e) => {
+      if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT") return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key === "ArrowRight") { e.preventDefault(); goTo(current + 1); }
+      else if (e.key === "ArrowLeft") { e.preventDefault(); goTo(current - 1); }
+      else if (e.key >= "1" && e.key <= "9") { goTo(Number(e.key) - 1); }
+      else if (e.key === "0") { goTo(9); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [started, submitting, showSubmitModal, questions.length, current, recordElapsed, saveCurrentAnswer]);
+
+  // ── Submit flow ────────────────────────────────────────────────────────
   const handleFinalSubmit = useCallback(async (isTerminated = false) => {
     if (hasSubmitted.current) return;
     hasSubmitted.current = true;
     setSubmitting(true);
+    setEvalStep(0);
 
-    await syncAnswersToServer();
+    // Record elapsed on the final question
+    recordElapsed(current);
+    await syncAnswersToServer(current);
+
+    // Animated evaluation steps while the backend evaluates
+    const stepTimers = EVAL_STEPS.map((_, i) =>
+      setTimeout(() => setEvalStep(i + 1), (i + 1) * 900)
+    );
 
     try {
       const res = await completeAssessment(assessmentId);
       const id = res?.id || assessmentId;
       sessionStorage.removeItem(`apt_remaining_${assessmentId}`);
+      stepTimers.forEach(clearTimeout);
+      exitFullscreen();
+      refreshHonesty().catch(() => {});
       navigate(`/aptitude/results/${id}`, {
         replace: true,
         state: { result: res?.result || res, difficulty, terminated: isTerminated },
       });
     } catch {
+      stepTimers.forEach(clearTimeout);
+      exitFullscreen();
       navigate("/aptitude", { replace: true });
     } finally {
       setSubmitting(false);
     }
-  }, [assessmentId, difficulty, syncAnswersToServer, navigate]);
+  }, [assessmentId, difficulty, syncAnswersToServer, navigate, recordElapsed, current]);
 
-  const handleSubmit = useCallback(() => {
-    const unanswered = questions.filter((_, i) => answers[i] == null || answers[i] === "" || (Array.isArray(answers[i]) && answers[i].length === 0));
-    if (unanswered.length > 0) {
-      if (!window.confirm(`You have ${unanswered.length} unanswered question(s). Submit anyway?`)) return;
-    }
+  const openSubmitModal = useCallback(() => {
+    if (submitting) return;
+    recordElapsed(current);
+    saveCurrentAnswer();
+    setShowSubmitModal(true);
+  }, [submitting, current, recordElapsed, saveCurrentAnswer]);
+
+  const confirmSubmit = useCallback(() => {
+    setShowSubmitModal(false);
     handleFinalSubmit(false);
-  }, [questions, answers, handleFinalSubmit]);
+  }, [handleFinalSubmit]);
+
+  const cancelSubmit = useCallback(() => {
+    setShowSubmitModal(false);
+    questionStartRef.current = Date.now();
+  }, []);
 
   const handleTimeUp = useCallback(() => {
     handleFinalSubmit(false);
@@ -355,7 +507,6 @@ export default function AptitudeTest() {
 
   // ── Render states ──────────────────────────────────────────────────────
 
-  // Loading screen with step indicators
   if (loadingStep && !fullscreenDenied) {
     return (
       <div className="apt-page">
@@ -381,7 +532,6 @@ export default function AptitudeTest() {
     );
   }
 
-  // Fullscreen denial dialog
   if (fullscreenDenied) {
     return (
       <div className="apt-page">
@@ -412,17 +562,19 @@ export default function AptitudeTest() {
       <button className="apt-retry-btn" onClick={() => navigate(`/aptitude/test?id=${assessmentId}`, { replace: true })}>Try Again</button>
     </div></div></div>);
 
-  if (terminated) return null;
-
   if (!started || questions.length === 0) return null;
 
   const answeredCount = Object.keys(answers).filter((k) => answers[k] != null && answers[k] !== "" && !(Array.isArray(answers[k]) && answers[k].length === 0)).length;
+  const remaining = questions.length - answeredCount;
   const progress = questions.length > 0 ? (answeredCount / questions.length) * 100 : 0;
   const q = questions[current] || {};
   const warningData = showWarning ? WARNING_MESSAGES[showWarning] : null;
 
   return (
-    <div className="apt-test-root">
+    <div className="apt-test-root" role="main" aria-label="Aptitude Assessment">
+      {/* Evaluation overlay */}
+      {submitting && <EvalOverlay stepIndex={evalStep} />}
+
       {/* Top Bar */}
       <div className="apt-topbar">
         <div className="apt-topbar-left">
@@ -436,17 +588,20 @@ export default function AptitudeTest() {
         </div>
         <div className="apt-topbar-center">
           <span className="apt-progress-text">{answeredCount}/{questions.length} Answered</span>
-          <div className={`apt-warning-badge ${warnings > 0 ? "has-warnings" : ""}`}>
+          <span className={`apt-saved-indicator ${savedIndicator === "saved" ? "visible" : ""} ${savedIndicator === "saving" ? "saving" : ""}`} aria-live="polite">
+            {savedIndicator === "saving" ? "Saving..." : savedIndicator === "saved" ? "Saved ✓" : ""}
+          </span>
+          <div className={`apt-warning-badge ${warnings > 0 ? "has-warnings" : ""}`} title="Integrity warnings">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
             {warnings}/3
           </div>
-          <button className="apt-submit-top-btn" onClick={handleSubmit} disabled={submitting}>Submit</button>
+          <button className="apt-submit-top-btn" onClick={openSubmitModal} disabled={submitting}>Submit</button>
         </div>
       </div>
 
       {/* Body */}
       <div className="apt-test-body">
-        <div className="apt-question-panel">
+        <div className="apt-question-panel" aria-live="polite">
           <div className="apt-question-number">Question {current + 1} of {questions.length}</div>
           <div className="apt-q-meta">
             <span className="apt-q-difficulty">{q.difficulty || "Medium"}</span>
@@ -462,11 +617,17 @@ export default function AptitudeTest() {
           <QuestionRenderer question={q} index={current} answers={answers} onAnswer={handleAnswer} />
         </div>
 
-        <div className="apt-navigator">
+        <div className="apt-navigator" aria-label="Question navigator">
           <div className="apt-nav-title">Question Navigator</div>
           <div className="apt-nav-grid">
             {questions.map((_, i) => (
-              <button key={i} className={`apt-nav-btn ${i === current ? "current" : ""} ${answers[i] != null && answers[i] !== "" && !(Array.isArray(answers[i]) && answers[i].length === 0) ? "answered" : ""} ${review.has(i) ? "review" : ""}`} onClick={() => { saveCurrentAnswer(); setCurrent(i); setVisited((prev) => new Set(prev).add(i)); }}>
+              <button
+                key={i}
+                className={`apt-nav-btn ${i === current ? "current" : ""} ${answers[i] != null && answers[i] !== "" && !(Array.isArray(answers[i]) && answers[i].length === 0) ? "answered" : ""} ${review.has(i) ? "review" : ""}`}
+                onClick={() => { recordElapsed(current); saveCurrentAnswer(); setCurrent(i); setVisited((prev) => new Set(prev).add(i)); }}
+                aria-label={`Question ${i + 1}`}
+                aria-current={i === current ? "true" : undefined}
+              >
                 {i + 1}
               </button>
             ))}
@@ -483,18 +644,47 @@ export default function AptitudeTest() {
       {/* Bottom Bar */}
       <div className="apt-bottombar">
         <div className="apt-bottom-left">
-          <button className="apt-btn" disabled={current === 0} onClick={() => { saveCurrentAnswer(); setCurrent((p) => Math.max(0, p - 1)); }}>Previous</button>
-          <button className="apt-btn" disabled={current >= questions.length - 1} onClick={() => { saveCurrentAnswer(); setCurrent((p) => Math.min(questions.length - 1, p + 1)); }}>Next</button>
+          <button className="apt-btn" disabled={current === 0} onClick={() => { recordElapsed(current); saveCurrentAnswer(); setCurrent((p) => Math.max(0, p - 1)); }}>Previous</button>
+          <button className="apt-btn" disabled={current >= questions.length - 1} onClick={() => { recordElapsed(current); saveCurrentAnswer(); setCurrent((p) => Math.min(questions.length - 1, p + 1)); }}>Next</button>
         </div>
         <div className="apt-bottom-right">
           <button className={`apt-btn review ${review.has(current) ? "active" : ""}`} onClick={toggleReview}>Mark for Review</button>
           <button className="apt-btn" onClick={() => { setAnswers((prev) => { const next = { ...prev }; delete next[current]; return next; }); }}>Clear</button>
-          <button className="apt-btn primary" onClick={handleSubmit} disabled={submitting}>{submitting ? "Submitting..." : "Submit Test"}</button>
+          <button className="apt-btn primary" onClick={openSubmitModal} disabled={submitting}>{submitting ? "Submitting..." : "Submit Test"}</button>
         </div>
       </div>
 
+      {/* Submit Confirmation Modal */}
+      {showSubmitModal && createPortal(
+        <div className="apt-modal-overlay" role="dialog" aria-modal="true" aria-label="Submit assessment confirmation">
+          <motion.div className="apt-submit-modal" initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}>
+            <div className="apt-submit-modal-icon">
+              <svg viewBox="0 0 24 24" fill="none" width="30" height="30">
+                <circle cx="12" cy="12" r="9" stroke="var(--accent)" strokeWidth="1.5" opacity="0.5" />
+                <path d="M12 7v5l3 2" stroke="var(--accent)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
+            <h3 className="apt-submit-modal-title">Finish Assessment?</h3>
+            <div className="apt-submit-summary">
+              <div className="apt-submit-stat">
+                <span className="apt-submit-stat-value">{answeredCount} / {questions.length}</span>
+                <span className="apt-submit-stat-label">Questions Answered</span>
+              </div>
+              <div className="apt-submit-stat">
+                <span className="apt-submit-stat-value">{remaining}</span>
+                <span className="apt-submit-stat-label">Remaining</span>
+              </div>
+            </div>
+            <p className="apt-submit-note">Once submitted you cannot edit this attempt. Are you sure you want to finish?</p>
+            <div className="apt-submit-actions">
+              <button className="apt-btn" onClick={cancelSubmit} autoFocus>Cancel</button>
+              <button className="apt-btn primary" onClick={confirmSubmit}>Submit Assessment</button>
+            </div>
+          </motion.div>
+        </div>, document.body)}
+
       {/* Progressive Warning Modals */}
-      {showWarning && showWarning < 3 && warningData && (
+      {showWarning && showWarning < 3 && warningData && createPortal(
         <div className="apt-modal-overlay">
           <motion.div className="apt-warning-modal" initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}>
             <div className="apt-warning-icon-wrap">
@@ -507,12 +697,11 @@ export default function AptitudeTest() {
             <div className="apt-warning-counter">{showWarning} / 3</div>
             <button className="apt-warning-btn" onClick={handleDismissWarning}>Return to Exam</button>
           </motion.div>
-        </div>
-      )}
+        </div>, document.body)}
 
       {/* Termination Modal */}
-      {terminated && (
-        <div className="apt-modal-overlay">
+      {terminated && createPortal(
+        <div className="apt-modal-overlay" role="dialog" aria-modal="true" aria-label="Assessment terminated">
           <motion.div className="apt-termination-modal" initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}>
             <div className="apt-termination-icon-wrap">
               <svg className="apt-termination-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -523,8 +712,7 @@ export default function AptitudeTest() {
             <p className="apt-termination-reason">{terminationReason}</p>
             <div className="apt-termination-badge">Disqualified</div>
           </motion.div>
-        </div>
-      )}
+        </div>, document.body)}
     </div>
   );
 }
@@ -547,9 +735,9 @@ function QuestionRenderer({ question, index, answers, onAnswer }) {
 
   if (question.type === "boolean") {
     return (
-      <div className="apt-boolean-grid">
+      <div className="apt-boolean-grid" role="radiogroup" aria-label="True or false">
         {["True", "False"].map((opt) => (
-          <button key={opt} className={`apt-boolean-btn ${val === opt ? "selected" : ""}`} onClick={() => onAnswer(index, opt)}>
+          <button key={opt} role="radio" aria-checked={val === opt} className={`apt-boolean-btn ${val === opt ? "selected" : ""}`} onClick={() => onAnswer(index, opt)}>
             {opt}
           </button>
         ))}
@@ -559,21 +747,21 @@ function QuestionRenderer({ question, index, answers, onAnswer }) {
 
   if (question.type === "numerical") {
     return (
-      <input className="apt-numerical-input" type="number" value={val || ""} onChange={(e) => onAnswer(index, e.target.value)} placeholder="Enter your answer" autoComplete="off" />
+      <input className="apt-numerical-input" type="number" value={val || ""} onChange={(e) => onAnswer(index, e.target.value)} placeholder="Enter your answer" autoComplete="off" aria-label="Numerical answer" />
     );
   }
 
   if (question.type === "multiple") {
     const selected = val || [];
     return (
-      <div className="apt-options">
+      <div className="apt-options" role="group" aria-label="Select all that apply">
         {(question.options || []).map((opt, oi) => {
           const isSelected = selected.includes(oi);
           return (
-            <div key={oi} className={`apt-option ${isSelected ? "selected" : ""}`} onClick={() => {
+            <div key={oi} role="checkbox" aria-checked={isSelected} tabIndex="0" className={`apt-option ${isSelected ? "selected" : ""}`} onClick={() => {
               const next = isSelected ? selected.filter((s) => s !== oi) : [...selected, oi];
               onAnswer(index, next);
-            }}>
+            }} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); const next = isSelected ? selected.filter((s) => s !== oi) : [...selected, oi]; onAnswer(index, next); } }}>
               <div className="apt-option-checkbox">{isSelected && <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="3" fill="none"><polyline points="20 6 9 17 4 12"/></svg>}</div>
               <span className="apt-option-label">{opt}</span>
             </div>
@@ -584,9 +772,9 @@ function QuestionRenderer({ question, index, answers, onAnswer }) {
   }
 
   return (
-    <div className="apt-options">
+    <div className="apt-options" role="radiogroup" aria-label="Choose one answer">
       {(question.options || []).map((opt, oi) => (
-        <div key={oi} className={`apt-option ${val === oi ? "selected" : ""}`} onClick={() => onAnswer(index, oi)}>
+        <div key={oi} role="radio" aria-checked={val === oi} tabIndex="0" className={`apt-option ${val === oi ? "selected" : ""}`} onClick={() => onAnswer(index, oi)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onAnswer(index, oi); } }}>
           <div className="apt-option-radio" />
           <span className="apt-option-label">{opt}</span>
         </div>

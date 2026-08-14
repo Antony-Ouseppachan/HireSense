@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { useHonesty } from "../context/HonestyContext";
 import { getProfile, getInterviews } from "../services/apiService";
 import {
   IconAptitude, IconGlobe, IconMessage, IconCode,
@@ -51,6 +52,7 @@ function CatIcon({ name, size, color }) {
 
 function InterviewStudio() {
   const { user, emailVerified } = useAuth();
+  const { honesty } = useHonesty();
   const navigate = useNavigate();
   const [profile, setProfile] = useState(null);
   const [interviews, setInterviews] = useState([]);
@@ -121,6 +123,35 @@ function InterviewStudio() {
             <div className="studio-verify-gate-actions">
               <button className="studio-verify-gate-btn" onClick={() => navigate("/profile#verification")}>
                 Go to Verification
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Honesty lock gate
+  if (honesty?.locked) {
+    return (
+      <div className="studio-container">
+        <div className="studio-bg-glow" />
+        <div className="studio-verify-gate">
+          <div className="studio-verify-gate-card">
+            <div className="studio-verify-gate-icon studio-lock-gate-icon">
+              <IconLock size={40} color="#f87171" />
+            </div>
+            <h2>Interview Studio Locked</h2>
+            <p>
+              Your honesty score is <strong>{honesty.score}/100</strong>. The Interview Studio is locked until
+              your score rises above 75. Reattempt a previous assessment without cheating to recover your score.
+            </p>
+            <div className="studio-verify-gate-actions">
+              <button className="studio-verify-gate-btn studio-lock-gate-btn" onClick={() => navigate("/aptitude/history")}>
+                Reattempt a Previous Test
+              </button>
+              <button className="studio-verify-gate-btn studio-verify-gate-btn-ghost" onClick={() => navigate("/dashboard")}>
+                Go to Dashboard
               </button>
             </div>
           </div>

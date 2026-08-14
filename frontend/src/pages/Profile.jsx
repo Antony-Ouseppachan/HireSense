@@ -1,4 +1,5 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import AutocompleteInput from "../components/AutocompleteInput.jsx";
 import LoadingSpinner from "/src/components/LoadingSpinner.jsx";
 import { useAuth } from "/src/context/AuthContext.jsx";
@@ -550,17 +551,16 @@ export default function Profile() {
       </div>
 
       {/* Resume viewer */}
-      {showResumeViewer && (
+      {showResumeViewer && createPortal(
         <div className="viewer-modal-overlay" role="dialog" onClick={() => setShowResumeViewer(false)}>
           <div className="viewer-modal" onClick={e => e.stopPropagation()}>
             <button className="viewer-close" onClick={() => setShowResumeViewer(false)}>&times;</button>
             <iframe src={resumeUrl} title="Resume" className="viewer-iframe" />
           </div>
-        </div>
-      )}
+        </div>, document.body)}
 
       {/* Resume delete confirmation */}
-      {showDeleteConfirm && (
+      {showDeleteConfirm && createPortal(
         <div className="confirm-modal-overlay" role="dialog">
           <div className="confirm-modal">
             <p className="confirm-title">Delete resume?</p>
@@ -570,8 +570,7 @@ export default function Profile() {
               <button className="confirm-button confirm-button-danger" onClick={handleDeleteResume} disabled={isDeleting}>{isDeleting ? "Deleting..." : "Delete"}</button>
             </div>
           </div>
-        </div>
-      )}
+        </div>, document.body)}
 
       {toast && <div className={`toast toast-${toast.type}`}>{toast.msg}</div>}
     </div>

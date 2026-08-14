@@ -29,24 +29,76 @@ function buildBatchPrompt(profile, difficulty, batchSize, startNumber) {
   const timeMap = { easy: "30-60s", medium: "60-120s", hard: "120-300s" };
   const solveTime = timeMap[difficulty] || "60s";
 
-  return {
-    system: `You are a placement aptitude test generator. Generate ${difficulty} MCQs for campus recruitment.
+return {
+  system: `You are an expert campus placement aptitude question generator.
 
-Each question must test reasoning, analytical thinking, quantitative aptitude, or logical deduction.
+Generate original, high-quality ${difficulty} multiple-choice aptitude questions similar in style to modern campus recruitment assessments (SHL, AMCAT, CoCubes, Mercer Mettl, HackerRank Aptitude, eLitmus and similar platforms).
 
-Rules: No trivia, no memorization, no GK, no school-level questions. Solve time ~${solveTime}. Distractors must be plausible (common errors).
+Generate ONLY aptitude questions covering:
+• Quantitative Aptitude
+• Logical Reasoning
+• Analytical Reasoning
 
-Return ONLY valid JSON:
-{"questions":[{"question":"","options":["A","B","C","D"],"correctAnswer":0,"explanation":"","topic":"","difficulty":"${difficulty}","type":"mcq","estimatedTime":60}]}
+Do NOT generate:
+• General Knowledge
+• Current Affairs
+• English
+• Programming
+• Computer Fundamentals
+• Science
+• Theory or memorization questions
 
-correctAnswer is 0-based index (0-3). No markdown, no extra text, only JSON.`,
-    user: `Role: ${targetRole}
+Requirements:
+- Questions must require reasoning or calculation.
+- Match ${difficulty} difficulty.
+- Average solve time: ${solveTime}.
+- Exactly one correct answer.
+- Exactly four unique, meaningful options.
+- Distractors should reflect common candidate mistakes.
+- Avoid repeated concepts and values.
+- Return ONLY valid JSON matching the required schema.
+- No markdown.
+- No commentary.`,
+
+  user: `Generate ${batchSize} placement aptitude MCQs.
+
+Role: ${targetRole}
 Experience: ${experienceLevel}
 Difficulty: ${difficulty}
-Questions: ${batchSize}
 Weak Areas: ${weakAreas}
-Goals: ${learningGoals}`,
-  };
+Learning Goals: ${learningGoals}
+
+Return this exact JSON structure:
+
+{
+  "questions":[
+    {
+      "question":"...",
+      "options":["...","...","...","..."],
+      "correctAnswer":0,
+      "explanation":{
+        "correct":"Step-by-step solution.",
+        "option0":"Reason.",
+        "option1":"Reason.",
+        "option2":"Reason.",
+        "option3":"Reason."
+      },
+      "topic":"...",
+      "difficulty":"${difficulty}",
+      "type":"mcq",
+      "estimatedTime":${solveTime}
+    }
+  ]
+}
+
+Rules:
+- Complete questions only.
+- End every question with '?' or ':'.
+- No duplicate or empty options.
+- correctAnswer must be 0-3.
+- Every option explanation is mandatory.
+- Return JSON only.`,
+};
 }
 
 // ─── Topic inference (keyword-based, no AI call) ──────────────────
@@ -98,6 +150,16 @@ const TIME_DEFAULTS = { easy: 60, medium: 90, hard: 150 };
 function repairAndValidate(q, expectedDifficulty) {
   const repairs = [];
 
+  // Sanitize question text
+  if (q.question && typeof q.question === "string") {
+    q.question = q.question.trim();
+  }
+
+  // Sanitize option values (trim whitespace; drop placeholder-only tokens)
+  if (Array.isArray(q.options)) {
+    q.options = q.options.map((o) => (typeof o === "string" ? o.trim() : o));
+  }
+
   if (!q.topic || typeof q.topic !== "string" || q.topic.trim().length < 2) {
     q.topic = inferTopic(q.question || "");
     repairs.push("topic");
@@ -123,19 +185,36 @@ function repairAndValidate(q, expectedDifficulty) {
     repairs.push("marks");
   }
 
-  if (!q.explanation || typeof q.explanation !== "string" || q.explanation.trim().length < 1) {
-    const answerText = (q.options && q.options[q.correctAnswer]) ? q.options[q.correctAnswer] : `option ${(q.correctAnswer || 0) + 1}`;
+  const answerText = (q.options && q.options[q.correctAnswer]) ? q.options[q.correctAnswer] : `option ${(q.correctAnswer || 0) + 1}`;
+
+  if (!q.explanation) {
     q.explanation = `Option '${answerText}' is the correct answer because it satisfies the conditions described in the question, while the remaining options do not.`;
     repairs.push("explanation");
+  } else if (typeof q.explanation === "object" && !Array.isArray(q.explanation)) {
+    if (typeof q.explanation.correct !== "string" || q.explanation.correct.trim().length < 1) {
+      q.explanation.correct = `Option '${answerText}' is the correct answer because it satisfies the conditions described in the question, while the remaining options do not.`;
+      repairs.push("explanation.correct");
+    }
+    (q.options || []).forEach((_, i) => {
+      const key = "option" + i;
+      if (q.explanation[key] == null || typeof q.explanation[key] !== "string") {
+        q.explanation[key] = "";
+        repairs.push(key);
+      }
+    });
   }
 
   if (!q.shortExplanation) {
-    q.shortExplanation = q.explanation;
+    q.shortExplanation = typeof q.explanation === "object" && !Array.isArray(q.explanation)
+      ? q.explanation.correct
+      : q.explanation;
     repairs.push("shortExplanation");
   }
 
   if (q.solution != null && (typeof q.solution !== "string" || q.solution.trim().length < 5)) {
-    q.solution = q.explanation;
+    q.solution = typeof q.explanation === "object" && !Array.isArray(q.explanation)
+      ? q.explanation.correct
+      : q.explanation;
     repairs.push("solution");
   }
 
@@ -155,6 +234,12 @@ function repairAndValidate(q, expectedDifficulty) {
  */
 async function saveQuestionToDb(assessmentId, q, batchNumber) {
   const qn = parseInt((q.id || "").replace("q", "") || "0", 10);
+  const explanationValue = (() => {
+    const e = q.explanation;
+    if (e == null) return q.shortExplanation || null;
+    if (typeof e === "object" && !Array.isArray(e)) return JSON.stringify(e);
+    return typeof e === "string" ? e : null;
+  })();
   await db.query(
     `INSERT INTO aptitude_questions
        (assessment_id, question_number, type, question_text, options, correct_answer,
@@ -175,7 +260,7 @@ async function saveQuestionToDb(assessmentId, q, batchNumber) {
       JSON.stringify(q.options || []), JSON.stringify(q.correctAnswer),
       q.topic, q.difficulty, q.subDifficulty || q.difficulty,
       q.marks || 1, q.estimatedTime || null,
-      q.solution || null, q.shortExplanation || q.explanation || null,
+      q.solution || null, explanationValue,
       q.learningObjective || null, q.commonMistake || null,
       q.passage || null, batchNumber,
     ]
@@ -202,7 +287,7 @@ async function loadExistingQuestions(assessmentId) {
 
 // ─── Single-question generator with retry ─────────────────────────
 
-async function generateSingle(assessmentId, profile, difficulty, questionNumber, existingQuestions, retryCount) {
+async function generateSingle(assessmentId, profile, difficulty, questionNumber, existingQuestions, retryCount, lastErrors = []) {
   if (retryCount > 0) monitor.recordRetry();
   if (retryCount >= MAX_RETRIES) {
     console.warn(`[questionGenerator] Q${questionNumber}: exhausted ${MAX_RETRIES} retries`);
@@ -210,7 +295,10 @@ async function generateSingle(assessmentId, profile, difficulty, questionNumber,
   }
 
   const prompt = buildBatchPrompt(profile, difficulty, 1, questionNumber);
-  const msg = prompt.user + "\n\nIMPORTANT: Previous attempt failed. Return ONLY valid JSON with all required fields.";
+  const failHint = lastErrors.length > 0
+    ? `\n\nIMPORTANT: Your previous attempt was REJECTED. Fix ALL of these issues and return ONLY valid JSON with complete, non-empty option values:\n- ${lastErrors.join("\n- ")}`
+    : "\n\nIMPORTANT: Previous attempt failed. Return ONLY valid JSON with all required fields.";
+  const msg = prompt.user + failHint;
   let parsed;
   try {
     parsed = await askAI(
@@ -218,12 +306,12 @@ async function generateSingle(assessmentId, profile, difficulty, questionNumber,
       { temperature: 0.7, max_tokens: 1500, assessmentId, questionNumber, difficulty }
     );
   } catch {
-    return generateSingle(assessmentId, profile, difficulty, questionNumber, existingQuestions, retryCount + 1);
+    return generateSingle(assessmentId, profile, difficulty, questionNumber, existingQuestions, retryCount + 1, lastErrors);
   }
 
   const questions = parsed?.questions || [];
   if (questions.length === 0) {
-    return generateSingle(assessmentId, profile, difficulty, questionNumber, existingQuestions, retryCount + 1);
+    return generateSingle(assessmentId, profile, difficulty, questionNumber, existingQuestions, retryCount + 1, lastErrors);
   }
 
   const q = questions[0];
@@ -235,7 +323,7 @@ async function generateSingle(assessmentId, profile, difficulty, questionNumber,
   if (valid && !dup) return q;
 
   console.log(`[questionGenerator] Q${questionNumber} retry ${retryCount + 1}/${MAX_RETRIES}: ${errors.join("; ")}`);
-  return generateSingle(assessmentId, profile, difficulty, questionNumber, existingQuestions, retryCount + 1);
+  return generateSingle(assessmentId, profile, difficulty, questionNumber, existingQuestions, retryCount + 1, errors);
 }
 
 // ─── Main entry point ─────────────────────────────────────────────
@@ -356,7 +444,7 @@ async function generateQuestionsForAssessment(assessmentId, profile, difficulty,
           console.log(`[questionGenerator] Q${qn}/${totalCount}: saved${repairInfo}`);
         } else {
           console.log(`[questionGenerator] Q${qn}: invalid — ${errors.join("; ")}, regenerating`);
-          const retryQ = await generateSingle(assessmentId, profile, difficulty, qn, allQuestions, 0);
+          const retryQ = await generateSingle(assessmentId, profile, difficulty, qn, allQuestions, 0, errors);
           if (retryQ) {
             await saveQuestionToDb(assessmentId, retryQ, batchNumber);
             allQuestions.push({ question: retryQ.question, topic: retryQ.topic, type: retryQ.type, difficulty: retryQ.difficulty });

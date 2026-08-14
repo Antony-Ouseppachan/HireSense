@@ -15,7 +15,7 @@ function initialize() {
     return;
   }
 
-  groqClient = new Groq({ apiKey });
+  groqClient = new Groq({ apiKey, timeout: 60000 });
   console.log("Groq AI initialized");
   console.log("Using model:", modelName);
 }

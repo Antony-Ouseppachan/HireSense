@@ -1,5 +1,6 @@
 const db = require("../config/database");
 const { askAI } = require("../services/ai");
+const { isLocked } = require("../services/honestyService");
 
 async function resolveUserId(firebaseUid) {
   const result = await db.query("SELECT id FROM users WHERE firebase_uid = $1", [firebaseUid]);
@@ -113,6 +114,15 @@ async function startMockInterview(req, res) {
   try {
     const userId = await resolveUserId(req.user.uid);
     if (!userId) return res.status(404).json({ message: "User not found." });
+
+    // Honesty lock: candidates with a low honesty score may only reattempt
+    // previous aptitude tests — no new interviews.
+    if (await isLocked(userId)) {
+      return res.status(403).json({
+        success: false,
+        message: "Interview Studio is locked due to a low honesty score. Reattempt a previous assessment without cheating to restore your score.",
+      });
+    }
 
     const { profile, category, difficulty, duration, mode } = req.body;
 

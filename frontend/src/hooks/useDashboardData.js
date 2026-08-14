@@ -2,14 +2,6 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { useAuth } from "../context/AuthContext";
 import { getProfile, getInterviews, getAuthenticatedUser, getAptitudeRemarks } from "../services/apiService";
 
-function getGreeting() {
-  const h = new Date().getHours();
-  if (h < 12) return "Good Morning";
-  if (h < 17) return "Good Afternoon";
-  if (h < 21) return "Good Evening";
-  return "Good Night";
-}
-
 function getDisplayName(user, profile) {
   if (profile?.first_name) {
     const f = profile.first_name.trim();
@@ -156,7 +148,6 @@ export default function useDashboardData() {
 
   const displayName = useMemo(() => getDisplayName(user, profile), [user, profile]);
   const initials = useMemo(() => extractInitials(profile, user), [profile, user]);
-  const greeting = useMemo(() => getGreeting(), []);
   const completion = useMemo(() => computeCompletion(profile), [profile]);
   const interviewStats = useMemo(() => computeInterviewStats(interviews), [interviews]);
   const activity = useMemo(() => computeActivity(interviews, profile, backendUser), [interviews, profile, backendUser]);
@@ -173,7 +164,6 @@ export default function useDashboardData() {
     user,
     displayName,
     initials,
-    greeting,
     completion,
     interviewStats,
     activity,

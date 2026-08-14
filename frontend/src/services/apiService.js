@@ -212,8 +212,9 @@ export async function matchCandidate(payload) {
 
 // ─── Aptitude Assessment (Legacy) ───
 
-export async function getAptitudeHistory() {
-    return apiRequest("/aptitude/history");
+export async function getAptitudeHistory(params = {}) {
+    const query = new URLSearchParams(params).toString();
+    return apiRequest(`/aptitude/history${query ? `?${query}` : ""}`);
 }
 
 export async function getAptitudeResult(id) {
@@ -277,4 +278,22 @@ export async function completeAssessment(id) {
 
 export async function cancelAssessment(id) {
     return apiRequest(`/aptitude/assessment/${id}/cancel`, { method: "POST" });
+}
+
+export async function deleteAssessment(id) {
+    return apiRequest(`/aptitude/assessment/${id}`, { method: "DELETE" });
+}
+
+export async function getAptitudeReview(id) {
+    return apiRequest(`/aptitude/review/${id}`);
+}
+
+export async function reattemptAssessment(id) {
+    const response = await apiRequest(`/aptitude/reattempt/${id}`, { method: "POST" });
+    return response;
+}
+
+export async function getHonestyScore() {
+    const response = await apiRequest("/aptitude/honesty");
+    return response;
 }

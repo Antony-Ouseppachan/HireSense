@@ -589,3 +589,31 @@
   background: rgba(29, 155, 240, 0.2);
   border-color: rgba(29, 155, 240, 0.5);
 }
+
+/* Honesty lock gate */
+.studio-lock-gate-icon {
+  background: rgba(248, 113, 113, 0.1);
+}
+
+.studio-lock-gate-btn {
+  background: rgba(248, 113, 113, 0.12);
+  border-color: rgba(248, 113, 113, 0.35);
+  color: #f87171;
+}
+
+.studio-lock-gate-btn:hover {
+  background: rgba(248, 113, 113, 0.2);
+  border-color: rgba(248, 113, 113, 0.6);
+}
+
+.studio-verify-gate-btn-ghost {
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.15);
+  color: var(--text-secondary);
+}
+
+.studio-verify-gate-btn-ghost:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.3);
+  color: var(--text-primary);
+}

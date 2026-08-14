@@ -1,9 +1,11 @@
 ﻿import { useState, useEffect, useRef, useMemo } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
+import { createPortal } from "react-dom";
 import { useAuth } from "../context/AuthContext";
+import { useHonesty } from "../context/HonestyContext";
 import useDashboardData from "../hooks/useDashboardData";
-import { uploadResume, deleteResume, getAptitudeRemarkDetail } from "../services/apiService";
+import { uploadResume, deleteResume, getAptitudeRemarkDetail, getAptitudeHistory, reattemptAssessment } from "../services/apiService";
 import LoadingSpinner from "../components/LoadingSpinner";
 import "../styles/Dashboard.css";
 
@@ -96,18 +98,45 @@ const itemAnim = { hidden: { opacity: 0, y: 24 }, show: { opacity: 1, y: 0, tran
 
 export default function Dashboard() {
   const { user, isCandidate, isRecruiter } = useAuth();
-  const { loading, error, refetch, profile, interviews, backendUser, displayName, initials, greeting, completion, interviewStats, activity, tasks, health, relativeTime, remarks } = useDashboardData();
+  const { honesty, refresh: refreshHonesty } = useHonesty();
+  const { loading, error, refetch, profile, interviews, backendUser, displayName, initials, completion, interviewStats, activity, tasks, health, relativeTime, remarks } = useDashboardData();
+  const navigate = useNavigate();
   const [searchOpen, setSearchOpen] = useState(false);
   const [resumeUploading, setResumeUploading] = useState(false);
   const [showResumeViewer, setShowResumeViewer] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [historyList, setHistoryList] = useState([]);
+  const [reattemptingId, setReattemptingId] = useState(null);
+  const [reattemptError, setReattemptError] = useState("");
 
   useEffect(() => {
     const h = (e) => { if ((e.ctrlKey || e.metaKey) && e.key === "k") { e.preventDefault(); setSearchOpen((o) => !o); } };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
   }, []);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await getAptitudeHistory({ limit: 4 });
+        setHistoryList(res?.history || []);
+      } catch { /* ignore */ }
+    })();
+  }, []);
+
+  const handleReattempt = async (id) => {
+    if (reattemptingId) return;
+    setReattemptingId(id);
+    setReattemptError("");
+    try {
+      const res = await reattemptAssessment(id);
+      navigate(`/aptitude/test?id=${res.assessmentId}`);
+    } catch (err) {
+      setReattemptError(err.message || "Failed to create reattempt. Please try again.");
+      setReattemptingId(null);
+    }
+  };
 
   const handleResumeUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -172,19 +201,19 @@ export default function Dashboard() {
     <motion.div className="dash-root" variants={container} initial="hidden" animate="show">
       <SearchOverlay open={searchOpen} onClose={() => setSearchOpen(false)} />
 
-      <div className="dash-top-bar">
-        <button className="dash-search-trigger" onClick={() => setSearchOpen(true)}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="dash-search-trigger-icon"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-          <span>Search</span>
-          <kbd>Ctrl+K</kbd>
-        </button>
-        <LiveClock />
-      </div>
-
       <div className="dash-container">
+        <div className="dash-top-bar">
+          <button className="dash-search-trigger" onClick={() => setSearchOpen(true)}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="dash-search-trigger-icon"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            <span>Search</span>
+            <kbd>Ctrl+K</kbd>
+          </button>
+          <LiveClock />
+        </div>
+
         {/* Greeting */}
         <motion.section className="dash-greeting" variants={itemAnim}>
-          <h1 className="dash-greeting-text">{greeting}, <span className="dash-greeting-name">{displayName}</span></h1>
+          <h1 className="dash-greeting-text">Ready for launch, <span className="dash-greeting-name">{displayName}</span>?</h1>
           <p className="dash-greeting-sub">Welcome back to your AI workspace.</p>
         </motion.section>
 
@@ -264,6 +293,11 @@ export default function Dashboard() {
               </motion.div>
             ))}
           </div>
+        </motion.section>
+
+        {/* Honesty Score Module */}
+        <motion.section className="dash-section" variants={itemAnim} id="honesty">
+          <HonestyModule honesty={honesty} onRefresh={refreshHonesty} />
         </motion.section>
 
         {/* Resume Management */}
@@ -372,20 +406,33 @@ export default function Dashboard() {
           </motion.section>
         </div>
 
-        {/* Account Health */}
-        <motion.section className="dash-section" variants={itemAnim}>
+        {/* Assessment History */}
+        <motion.section className="dash-section dash-section-full" variants={itemAnim}>
           <div className="dash-card">
             <div className="dash-card-header">
-              <h2 className="dash-card-title">Account Health</h2>
+              <h2 className="dash-card-title">Assessment History</h2>
+              {historyList.length > 0 && (
+                <Link to="/aptitude/history" className="dash-card-link">View All</Link>
+              )}
             </div>
-            <div className="dash-health-grid">
-              <HealthItem label="Profile Strength" value={`${health.profileStrength}%`} pct={health.profileStrength} />
-              <HealthItem label="Security Score" value={`${health.securityScore}%`} pct={health.securityScore} />
-              <HealthItem label="Email Verified" value={health.emailVerified ? "Yes" : "No"} pct={health.emailVerified ? 100 : 0} />
-              <HealthItem label="2FA" value="Not Enabled" pct={0} />
-              <HealthItem label="Storage" value={`${health.storageUsed}MB / ${health.storageLimit}MB`} pct={Math.min((health.storageUsed / health.storageLimit) * 100, 100)} />
-              <HealthItem label="Subscription" value={health.subscription} pct={100} />
-            </div>
+            {historyList.length === 0 ? (
+              <div className="dash-empty">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="dash-empty-icon"><path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9m0 0h6"/></svg>
+                <p>No aptitude assessments taken yet.</p>
+                <Link to="/aptitude" className="dash-empty-cta">Take an Assessment</Link>
+              </div>
+            ) : (
+              <>
+                {reattemptError && (
+                  <div className="dash-assess-error" role="alert">{reattemptError}</div>
+                )}
+                <div className="dash-assess-grid">
+                  {historyList.map((h) => (
+                    <AssessmentCard key={h.id} attempt={h} onReattempt={handleReattempt} reattempting={reattemptingId === h.id} />
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         </motion.section>
 
@@ -394,8 +441,7 @@ export default function Dashboard() {
           <div className="dash-card">
             <div className="dash-card-header">
               <h2 className="dash-card-title">Remarks History</h2>
-            </div>
-            {remarks.length === 0 ? (
+            </div>            {remarks.length === 0 ? (
               <p style={{ fontSize: 13, color: "var(--text-muted)", padding: "16px 20px", margin: 0 }}>No assessments taken yet.</p>
             ) : (
               <div className="dash-remarks-list">
@@ -410,17 +456,16 @@ export default function Dashboard() {
       </div>
 
       {/* Resume Viewer Modal */}
-      {showResumeViewer && profile?.resume_url && (
+      {showResumeViewer && profile?.resume_url && createPortal(
         <div className="viewer-modal-overlay" onClick={() => setShowResumeViewer(false)}>
           <div className="viewer-modal" onClick={(e) => e.stopPropagation()}>
             <button className="viewer-close" onClick={() => setShowResumeViewer(false)}>&times;</button>
             <iframe src={profile.resume_url} title="Resume" className="viewer-iframe" />
           </div>
-        </div>
-      )}
+        </div>, document.body)}
 
       {/* Delete Confirm Modal */}
-      {showDeleteConfirm && (
+      {showDeleteConfirm && createPortal(
         <div className="confirm-modal-overlay" onClick={() => setShowDeleteConfirm(false)}>
           <div className="confirm-modal" onClick={(e) => e.stopPropagation()}>
             <p className="confirm-title">Delete resume?</p>
@@ -430,11 +475,100 @@ export default function Dashboard() {
               <button className="confirm-button confirm-button-danger" onClick={handleDeleteResume} disabled={isDeleting}>{isDeleting ? "Deleting..." : "Delete"}</button>
             </div>
           </div>
-        </div>
-      )}
+        </div>, document.body)}
 
       {resumeUploading && <div className="dash-overlay"><LoadingSpinner label="Uploading resume..." /></div>}
     </motion.div>
+  );
+}
+
+function HonestyModule({ honesty, onRefresh }) {
+  if (!honesty) return null;
+  const score = Math.max(0, Math.min(100, honesty.score || 0));
+  const status = honesty.status || "good";
+  const colors = { excellent: "#10b981", good: "#38bdf8", warning: "#fbbf24", locked: "#f87171" };
+  const color = colors[status] || "#38bdf8";
+  const labels = { excellent: "Excellent Integrity", good: "Good Standing", warning: "Integrity Warning", locked: "Studio Locked" };
+  const descs = {
+    locked: "Your honesty score fell too low, so the Interview Studio is locked. Reattempt a previous assessment without cheating to recover your score.",
+    warning: "Detected violations are pulling your honesty score down. Complete assessments without cheating to raise it back above 80.",
+    good: "No major integrity violations this week. Keep taking assessments honestly to protect your score.",
+    excellent: "Clean record this week. Outstanding integrity — keep it up!",
+  };
+  const R = 84;
+  const C = 2 * Math.PI * R;
+
+  return (
+    <div className="dash-card dash-honesty-card" id="honesty-card">
+      <div className="dash-honesty-gauge-wrap">
+        <svg className="dash-honesty-gauge" viewBox="0 0 200 200">
+          <circle cx="100" cy="100" r={R} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="12" />
+          <motion.circle
+            cx="100" cy="100" r={R} fill="none"
+            stroke={color} strokeWidth="12" strokeLinecap="round"
+            strokeDasharray={C}
+            initial={{ strokeDashoffset: C }}
+            animate={{ strokeDashoffset: C - (C * score) / 100 }}
+            transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
+            transform="rotate(-90 100 100)"
+            style={{ filter: `drop-shadow(0 0 12px ${color}55)` }}
+          />
+        </svg>
+        <div className="dash-honesty-gauge-center">
+          <svg className="dash-honesty-shield" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+            <path d="M9 12l2 2 4-4" />
+          </svg>
+          <div className="dash-honesty-score"><CountUp value={score} duration={1.2} />%</div>
+          <span className="dash-honesty-sub">Honesty Score</span>
+        </div>
+      </div>
+
+      <div className="dash-honesty-info">
+        <div className="dash-honesty-head">
+          <div>
+            <h2 className="dash-honesty-title">Integrity Shield</h2>
+            <span className="dash-honesty-status" style={{ color, borderColor: `${color}55`, background: `${color}14` }}>
+              <span className="dash-honesty-status-dot" style={{ background: color }} />
+              {labels[status]}
+            </span>
+          </div>
+          <button className="dash-honesty-refresh" onClick={onRefresh} title="Refresh score">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          </button>
+        </div>
+
+        <p className="dash-honesty-desc">{descs[status] || descs.good}</p>
+
+        <div className="dash-honesty-week">
+          <div className="dash-honesty-week-item">
+            <span className="dash-honesty-week-label">Week</span>
+            <span className="dash-honesty-week-value">{honesty.weekRangeLabel}</span>
+          </div>
+          <div className="dash-honesty-week-item">
+            <span className="dash-honesty-week-label">Violations</span>
+            <span className="dash-honesty-week-value" style={{ color: honesty.violationsCount > 0 ? "#f87171" : "var(--text-primary)" }}>{honesty.violationsCount}</span>
+          </div>
+          <div className="dash-honesty-week-item">
+            <span className="dash-honesty-week-label">Clean Attempts</span>
+            <span className="dash-honesty-week-value" style={{ color: "#10b981" }}>{honesty.cleanAssessments}</span>
+          </div>
+          <div className="dash-honesty-week-item">
+            <span className="dash-honesty-week-label">Assessments</span>
+            <span className="dash-honesty-week-value">{honesty.totalAssessments}</span>
+          </div>
+        </div>
+
+        <div className="dash-honesty-foot">
+          <span className="dash-honesty-reset">Resets to 100 every Monday</span>
+          {status === "locked" && (
+            <Link to="/aptitude/history" className="dash-honesty-cta">
+              Reattempt a Previous Test
+            </Link>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -464,22 +598,7 @@ function ActivityDot({ type }) {
   return <div className="dash-tl-dot-default" />;
 }
 
-function HealthItem({ label, value, pct }) {
-  return (
-    <div className="dash-health-item">
-      <div className="dash-health-header">
-        <span className="dash-health-label">{label}</span>
-        <span className="dash-health-value">{value}</span>
-      </div>
-      <div className="dash-health-bar-track">
-        <motion.div className="dash-health-bar-fill" initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1], delay: 0.3 }} />
-      </div>
-    </div>
-  );
-}
-
-function RemarkRow({ remark }) {
-  const r = remark;
+function RemarkRow({ remark }) {  const r = remark;
   const riskLevel = r.risk_level || "none";
   const terminated = r.terminated || false;
   const score = r.score ?? 0;
@@ -583,6 +702,58 @@ function RemarkRow({ remark }) {
           </motion.div>
         )}
       </AnimatePresence>
+    </div>
+  );
+}
+
+function AssessmentCard({ attempt, onReattempt, reattempting }) {
+  const h = attempt;
+  const completed = h.status === "completed";
+  const ready = h.status === "ready";
+  const generating = h.status === "generating";
+  const done = completed || h.status === "cancelled" || h.status === "in_progress";
+  const grade = h.grade || (h.score >= 90 ? "A+" : h.score >= 80 ? "A" : h.score >= 70 ? "B+" : h.score >= 60 ? "B" : h.score >= 50 ? "C" : "NI");
+  const tone = grade === "A+" ? "#10b981" : grade === "A" ? "#34d399" : grade === "B+" ? "#38bdf8" : grade === "B" ? "#fbbf24" : grade === "C" ? "#f97316" : "#f87171";
+  const integrity = h.integrity_score ?? 100;
+  const time = h.time_taken ?? 0;
+  const date = h.completed_at || h.created_at;
+
+  return (
+    <div className="dash-assess-card">
+      <div className="dash-assess-card-top">
+        <div className="dash-assess-score" style={{ color: completed ? tone : "var(--text-muted)" }}>
+          {completed ? `${h.score ?? 0}%` : "—"}
+        </div>
+        {completed ? (
+          <span className="dash-assess-grade" style={{ color: tone, borderColor: `${tone}55`, background: `${tone}14` }}>{grade}</span>
+        ) : (
+          <span className="dash-assess-grade" style={{ color: "#94a3b8", borderColor: "rgba(148,163,184,0.4)", background: "rgba(148,163,184,0.1)" }}>{h.status === "cancelled" ? "Cancelled" : h.status === "ready" ? "Ready" : h.status === "generating" ? "Generating" : "In Progress"}</span>
+        )}
+      </div>
+      <div className="dash-assess-meta">
+        <span className="dash-assess-diff">{(h.difficulty || "").charAt(0).toUpperCase() + (h.difficulty || "").slice(1)}</span>
+        <span className="dash-assess-date">{date ? new Date(date).toLocaleString([], { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }) : ""}</span>
+      </div>
+      <div className="dash-assess-stats">
+        <span>{completed ? `${h.correct_count ?? 0}/${h.total_questions ?? 0} correct` : `${h.total_questions ?? 0} questions`}</span>
+        {completed && <span>{h.accuracy ?? 0}% acc</span>}
+        {completed && <span>{Math.floor(time / 60)}m {time % 60}s</span>}
+        {completed && <span>Integrity {integrity}%</span>}
+      </div>
+      <div className="dash-assess-actions">
+        {generating ? (
+          <span className="dash-assess-btn" style={{ opacity: 0.5, cursor: "not-allowed" }}>Generating questions...</span>
+        ) : (
+          <>
+            {done && <Link to={`/aptitude/results/${h.id}`} className="dash-assess-btn">Analysis</Link>}
+            {done && <Link to={`/aptitude/review/${h.id}`} className="dash-assess-btn">Review</Link>}
+            {ready && <Link to={`/aptitude/test?id=${h.id}`} className="dash-assess-btn">Start Test</Link>}
+            <button className="dash-assess-btn primary" onClick={() => onReattempt(h.id)} disabled={reattempting}>
+              {reattempting ? "Creating..." : "Reattempt"}
+            </button>
+          </>
+        )}
+      </div>
     </div>
   );
 }

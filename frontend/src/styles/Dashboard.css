@@ -10,6 +10,7 @@
   display: flex;
   flex-direction: column;
   gap: 28px;
+  position: relative;
 }
 
 .dash-greeting { margin-bottom: 4px; }
@@ -33,9 +34,9 @@
 
 /* Top Bar */
 .dash-top-bar {
-  position: fixed;
-  top: 20px;
-  right: 32px;
+  position: absolute;
+  top: 82px;
+  right: 24px;
   z-index: 100;
   display: flex;
   align-items: center;
@@ -658,6 +659,211 @@
 .confirm-button-cancel { background: transparent; color: var(--text-secondary); border: 1px solid var(--border-color); }
 .confirm-button-danger { background: rgba(255,255,255,0.08); color: var(--text-primary); border: 1px solid rgba(255,255,255,0.15); }
 
+/* Honesty Score Module */
+.dash-honesty-card {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  padding: 28px 32px;
+  position: relative;
+  overflow: hidden;
+}
+
+.dash-honesty-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(600px 200px at 8% 50%, rgba(56, 189, 248, 0.06), transparent 60%);
+  pointer-events: none;
+}
+
+.dash-honesty-gauge-wrap {
+  position: relative;
+  width: 190px;
+  height: 190px;
+  flex-shrink: 0;
+}
+
+.dash-honesty-gauge {
+  width: 100%;
+  height: 100%;
+}
+
+.dash-honesty-gauge-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+.dash-honesty-shield {
+  width: 26px;
+  height: 26px;
+  margin-bottom: 4px;
+}
+
+.dash-honesty-score {
+  font-size: 40px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  color: var(--text-primary);
+  font-family: var(--font-heading);
+}
+
+.dash-honesty-sub {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.dash-honesty-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dash-honesty-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dash-honesty-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 8px;
+  letter-spacing: -0.02em;
+}
+
+.dash-honesty-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 50px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.dash-honesty-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.dash-honesty-refresh {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: var(--text-secondary);
+  border-radius: 8px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.dash-honesty-refresh:hover {
+  color: var(--text-primary);
+  border-color: rgba(255,255,255,0.25);
+  background: rgba(255,255,255,0.08);
+}
+
+.dash-honesty-refresh svg { width: 15px; height: 15px; }
+
+.dash-honesty-desc {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  max-width: 560px;
+}
+
+.dash-honesty-week {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  max-width: 560px;
+}
+
+.dash-honesty-week-item {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dash-honesty-week-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.dash-honesty-week-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.dash-honesty-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.dash-honesty-reset {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.dash-honesty-cta {
+  display: inline-flex;
+  align-items: center;
+  padding: 9px 18px;
+  border-radius: 10px;
+  background: rgba(248, 113, 113, 0.1);
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  color: #f87171;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.2s;
+}
+
+.dash-honesty-cta:hover {
+  background: rgba(248, 113, 113, 0.18);
+  border-color: rgba(248, 113, 113, 0.55);
+}
+
+@media (max-width: 640px) {
+  .dash-honesty-card { flex-direction: column; align-items: center; text-align: center; padding: 24px 20px; }
+  .dash-honesty-info { align-items: center; }
+  .dash-honesty-head { justify-content: center; }
+  .dash-honesty-desc { text-align: center; }
+  .dash-honesty-week { grid-template-columns: repeat(2, 1fr); }
+  .dash-honesty-foot { justify-content: center; }
+}
+
 /* Overlay */
 .dash-overlay {
   position: fixed; inset: 0;
@@ -1001,7 +1207,6 @@
   .dash-profile-card { flex-direction: column; align-items: stretch; }
   .dash-profile-stats { margin-left: 0; justify-content: space-between; }
   .dash-two-col { grid-template-columns: 1fr; }
-  .dash-top-bar { right: 16px; top: 16px; }
   .dash-search-trigger span { display: none; }
 }
 @media (max-width: 600px) {
@@ -1010,4 +1215,131 @@
   .dash-health-grid { grid-template-columns: 1fr; }
   .dash-greeting-text { font-size: 26px; }
   .dash-container { padding: 100px 16px 60px; }
+  .dash-top-bar { right: 16px; top: 74px; }
+}
+
+/* ─── Assessment History (Dashboard) ─── */
+
+.dash-card-link {
+  font-size: 12px;
+  font-weight: 500;
+  color: #38bdf8;
+  text-decoration: none;
+  padding: 6px 14px;
+  border-radius: 100px;
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  background: rgba(56, 189, 248, 0.06);
+  transition: all 0.2s;
+}
+.dash-card-link:hover {
+  background: rgba(56, 189, 248, 0.12);
+}
+
+.dash-assess-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
+}
+
+.dash-assess-error {
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.08);
+  border: 1px solid rgba(248, 113, 113, 0.2);
+}
+
+.dash-assess-card {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.01));
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 16px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: border-color 0.2s, transform 0.2s;
+}
+.dash-assess-card:hover {
+  border-color: rgba(255, 255, 255, 0.14);
+  transform: translateY(-2px);
+}
+
+.dash-assess-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.dash-assess-score {
+  font-size: 26px;
+  font-weight: 800;
+  font-family: var(--font-heading);
+  letter-spacing: -0.02em;
+}
+
+.dash-assess-grade {
+  font-size: 12px;
+  font-weight: 700;
+  font-family: var(--font-heading);
+  padding: 3px 12px;
+  border-radius: 100px;
+  border: 1px solid;
+}
+
+.dash-assess-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.dash-assess-diff {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-transform: capitalize;
+}
+
+.dash-assess-date {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.dash-assess-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.dash-assess-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.dash-assess-btn {
+  padding: 7px 16px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  text-decoration: none;
+  transition: all 0.2s;
+  display: inline-block;
+}
+.dash-assess-btn:hover { border-color: rgba(255, 255, 255, 0.2); color: var(--text-primary); background: rgba(255, 255, 255, 0.05); }
+.dash-assess-btn.primary { border-color: rgba(56, 189, 248, 0.3); color: #38bdf8; background: rgba(56, 189, 248, 0.06); }
+.dash-assess-btn.primary:hover { background: rgba(56, 189, 248, 0.12); }
+.dash-assess-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+@media (max-width: 700px) {
+  .dash-assess-grid { grid-template-columns: 1fr; }
 }
