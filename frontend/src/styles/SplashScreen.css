@@ -1,0 +1,172 @@
+.splash-root {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: radial-gradient(ellipse at 50% 30%, #090A0F 0%, #050608 60%);
+  transition: opacity 0.5s ease;
+}
+
+.splash-canvas {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* Soft glow behind mark */
+.splash-glow {
+  position: absolute;
+  width: 400px;
+  height: 400px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.06) 0%, transparent 60%);
+  filter: blur(30px);
+  opacity: 0;
+  transform: scale(0.8);
+  animation: splashGlowIn 1.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation-delay: 0.2s;
+  pointer-events: none;
+}
+
+@keyframes splashGlowIn {
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.splash-content {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+/* Logo wrapper */
+.splash-mark-wrapper {
+  width: 96px;
+  height: 96px;
+  margin-bottom: 28px;
+  opacity: 0;
+  transform: scale(0.7);
+  animation: splashMarkIn 1s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation-delay: 0.15s;
+}
+
+@keyframes splashMarkIn {
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.splash-mark {
+  width: 100%;
+  height: 100%;
+}
+
+/* Wordmark */
+.splash-wordmark {
+  font-family: var(--font-heading);
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: 0.25em;
+  color: #ffffff;
+  opacity: 0;
+  transform: translateY(8px);
+  animation: splashTextIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation-delay: 0.6s;
+}
+
+.splash-tagline {
+  margin-top: 8px;
+  font-family: var(--font-body);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: rgba(255, 255, 255, 0.4);
+  text-transform: uppercase;
+  opacity: 0;
+  animation: splashTextIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation-delay: 0.9s;
+}
+
+@keyframes splashTextIn {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Exit phase */
+.splash-exit {
+  animation: splashRootExit var(--splash-exit-duration, 950ms) ease forwards;
+}
+
+.splash-exit .splash-content {
+  animation: splashContentExit var(--splash-exit-duration, 950ms) cubic-bezier(0.4, 0, 0.6, 1) forwards;
+}
+
+.splash-exit .splash-glow {
+  animation: splashGlowOut var(--splash-exit-duration, 950ms) ease forwards;
+}
+
+@keyframes splashRootExit {
+  to {
+    background: radial-gradient(ellipse at 50% 30%, #090A0F 0%, #050608 60%);
+    opacity: 0;
+  }
+}
+
+@keyframes splashContentExit {
+  to {
+    opacity: 0;
+    transform: scale(1.05);
+    filter: blur(8px);
+  }
+}
+
+@keyframes splashGlowOut {
+  to {
+    opacity: 0;
+    transform: scale(1.5);
+  }
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+  .splash-mark-wrapper {
+    width: 72px;
+    height: 72px;
+  }
+  .splash-wordmark {
+    font-size: 20px;
+  }
+  .splash-glow {
+    width: 280px;
+    height: 280px;
+  }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .splash-mark-wrapper,
+  .splash-wordmark,
+  .splash-tagline,
+  .splash-glow,
+  .splash-exit,
+  .splash-exit .splash-content,
+  .splash-exit .splash-glow {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+    filter: none !important;
+  }
+  .splash-exit {
+    opacity: 0 !important;
+    transition: opacity 0.3s ease;
+  }
+}
