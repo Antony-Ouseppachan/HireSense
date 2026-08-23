@@ -1,11 +1,13 @@
-﻿import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useTheme } from "../context/ThemeContext";
+import { useSearch } from "../context/SearchContext";
+import { useAuth } from "../context/AuthContext";
+import ParticleBackground from "../components/ParticleBackground";
 import "../styles/Home.css";
 
 function CountUp({ to, duration = 2000, suffix = "" }) {
-  const [val, setVal] = useState(0);
   const ref = useRef(null);
   const hasRun = useRef(false);
 
@@ -16,13 +18,14 @@ function CountUp({ to, duration = 2000, suffix = "" }) {
     const frame = (now) => {
       const t = Math.min((now - start) / duration, 1);
       const eased = 1 - Math.pow(1 - t, 3);
-      setVal(Math.floor(eased * to));
+      const val = Math.floor(eased * to);
+      if (ref.current) ref.current.textContent = `${val}${suffix}`;
       if (t < 1) requestAnimationFrame(frame);
     };
     requestAnimationFrame(frame);
-  }, [to, duration]);
+  }, [to, duration, suffix]);
 
-  return <span ref={ref}>{val}{suffix}</span>;
+  return <span ref={ref}>0{suffix}</span>;
 }
 
 const FEATURES = [
@@ -46,19 +49,156 @@ const container = {
   show: { transition: { staggerChildren: 0.08 } },
 };
 
+const MOCK_ICONS = {
+  globe: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="mock-icon-svg" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" />
+      <path d="M2 12h20" />
+      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+    </svg>
+  ),
+  analyze: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="mock-icon-svg" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 2 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+      <polyline points="3.29 7 12 12 20.71 7" />
+      <line x1="12" y1="22" x2="12" y2="12" />
+    </svg>
+  ),
+  terminal: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="mock-icon-svg" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="4 17 10 11 4 5" />
+      <line x1="12" y1="19" x2="20" y2="19" />
+    </svg>
+  ),
+  code: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="mock-icon-svg" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="16 18 22 12 16 6" />
+      <polyline points="8 6 2 12 8 18" />
+    </svg>
+  ),
+  database: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="mock-icon-svg" strokeLinecap="round" strokeLinejoin="round">
+      <ellipse cx="12" cy="5" rx="9" ry="3" />
+      <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
+      <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
+    </svg>
+  ),
+};
+
+const CYCLES = [
+  { text: "gk", results: [
+    { label: "General Knowledge Assessment", desc: "Current affairs, science & business quiz", icon: "globe" },
+    { label: "Domain Knowledge Interview", desc: "Specialized cloud, cybersecurity & finance", icon: "analyze" }
+  ]},
+  { text: "code", results: [
+    { label: "Coding Challenge Studio", desc: "Algorithms, data structures & problem-solving", icon: "terminal" },
+    { label: "Technical Interview Prep", desc: "AI questions from your tech stack", icon: "code" }
+  ]},
+  { text: "system", results: [
+    { label: "System Design Studio", desc: "Scalability, caching, microservices & APIs", icon: "database" }
+  ]}
+];
+
+function SearchShowcaseWidget({ onClick, isMac }) {
+  const [query, setQuery] = useState("");
+  const [activeStep, setActiveStep] = useState(0); // 0: typing, 1: showing, 2: erasing
+  const [cycleIndex, setCycleIndex] = useState(0);
+
+  useEffect(() => {
+    let timer;
+    const currentText = CYCLES[cycleIndex].text;
+
+    if (activeStep === 0) {
+      if (query.length < currentText.length) {
+        timer = setTimeout(() => {
+          setQuery(currentText.slice(0, query.length + 1));
+        }, 150);
+      } else {
+        timer = setTimeout(() => {
+          setActiveStep(1);
+        }, 1500);
+      }
+    } else if (activeStep === 1) {
+      timer = setTimeout(() => {
+        setActiveStep(2);
+      }, 2000);
+    } else if (activeStep === 2) {
+      if (query.length > 0) {
+        timer = setTimeout(() => {
+          setQuery(query.slice(0, -1));
+        }, 80);
+      } else {
+        timer = setTimeout(() => {
+          setCycleIndex((prev) => (prev + 1) % CYCLES.length);
+          setActiveStep(0);
+        }, 400);
+      }
+    }
+
+    return () => clearTimeout(timer);
+  }, [query, activeStep, cycleIndex]);
+
+  const currentCycle = CYCLES[cycleIndex];
+
+  return (
+    <div className="search-showcase-card" onClick={onClick}>
+      {/* Mock Input Row */}
+      <div className="mock-input-row">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="mock-search-icon">
+          <circle cx="11" cy="11" r="8" />
+          <path d="m21 21-4.35-4.35" />
+        </svg>
+        <span className="mock-input-text">
+          {query}
+          <span className="mock-cursor" />
+        </span>
+        <div className="mock-kbd-badge">{isMac ? "⌘K" : "Ctrl + K"}</div>
+      </div>
+      
+      {/* Mock Results */}
+      <div className="mock-results-container">
+        {currentCycle.results.map((r, i) => (
+          <div key={r.label} className={`mock-result-item ${i === 0 ? "active" : ""}`}>
+            <div className="mock-item-icon">{MOCK_ICONS[r.icon]}</div>
+            <div className="mock-item-text">
+              <span className="mock-item-label">{r.label}</span>
+              <span className="mock-item-desc">{r.desc}</span>
+            </div>
+            {i === 0 && <span className="mock-item-badge">Press Enter</span>}
+          </div>
+        ))}
+      </div>
+      
+      {/* Showcase Caption */}
+      <div className="showcase-caption">
+        ⚡ Command Search Palette: Press <kbd className="caption-kbd">{isMac ? "⌘K" : "Ctrl+K"}</kbd> globally to search.
+      </div>
+    </div>
+  );
+}
+
 const itemAnim = {
   hidden: { opacity: 0, y: 30 },
   show: { opacity: 1, y: 0, transition: { duration: 0.6, ease: [0.16, 1, 0.3, 1] } },
 };
 
+
+
 function Home() {
   const { theme } = useTheme();
+  const { openSearch } = useSearch();
+  const { firebaseUser } = useAuth();
   const isLight = theme === "light";
+
+  const isMac = typeof window !== "undefined" && navigator.userAgent.toLowerCase().includes("mac");
+  const shortcutText = isMac ? "⌘K" : "Ctrl+K";
 
   return (
     <div className="home-root">
       {/* ─── Hero ─── */}
       <section className="hero">
+        {/* Mouse-reactive particle background */}
+        <ParticleBackground />
         {/* Floating background elements */}
         <div className="hero-floating-shapes">
           <div className="hero-float-shape" style={{ top: "20%", left: "8%", width: 60, height: 60, animationDelay: "0s" }} />
@@ -83,17 +223,26 @@ function Home() {
             Land your dream role.
           </motion.p>
 
-          <motion.div className="hero-actions" variants={itemAnim}>
-            <Link to="/register" className={`hero-btn hero-btn-primary ${isLight ? "light" : ""}`}>
-              <span>Get Started</span>
-              <svg className="hero-btn-arrow" viewBox="0 0 24 24" fill="none">
-                <path d="M5 12h14M13 5l7 7-7 7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </Link>
-            <Link to="/login" className="hero-btn hero-btn-secondary">
-              Sign In
-            </Link>
-          </motion.div>
+          {!firebaseUser && (
+            <motion.div className="hero-actions" variants={itemAnim}>
+              <Link to="/register" className={`hero-btn hero-btn-primary ${isLight ? "light" : ""}`}>
+                <span>Get Started</span>
+                <svg className="hero-btn-arrow" viewBox="0 0 24 24" fill="none">
+                  <path d="M5 12h14M13 5l7 7-7 7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </Link>
+              <Link to="/login" className="hero-btn hero-btn-secondary">
+                Sign In
+              </Link>
+            </motion.div>
+          )}
+
+          {/* Animated Search Mockup Showcase Widget (Only visible when logged in) */}
+          {firebaseUser && (
+            <motion.div className="hero-search-showcase-container" variants={itemAnim}>
+              <SearchShowcaseWidget onClick={openSearch} isMac={isMac} />
+            </motion.div>
+          )}
 
           {/* Stats bar */}
           <motion.div className="hero-stats" variants={itemAnim}>

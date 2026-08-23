@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   startAssessment,
   beginAssessment,
@@ -13,7 +13,14 @@ import useAntiCheat from "../hooks/useAntiCheat";
 import { useExam } from "../context/ExamContext";
 import "../styles/Aptitude.css";
 
-const TIME_MAP = { easy: 1200, medium: 2100, hard: 3000 };
+const TYPE_TIME_MAP = {
+  aptitude: { easy: 1200, medium: 2100, hard: 3000 },
+  general_knowledge: { easy: 1200, medium: 1500, hard: 2100 },
+};
+
+const MODULE_LABELS = { aptitude: "Aptitude", general_knowledge: "General Knowledge" };
+
+const PROCTOR_OVERLAY_MS = 1500;
 
 const STEPS = [
   { key: "loading", label: "Loading questions" },
@@ -76,10 +83,13 @@ export default function AptitudeTest() {
   const [terminated, setTerminated] = useState(false);
   const [terminationReason, setTerminationReason] = useState("");
   const [difficulty, setDifficulty] = useState("medium");
-  const [maxTime, setMaxTime] = useState(TIME_MAP.medium);
+  const [type, setType] = useState("aptitude");
+  const [maxTime, setMaxTime] = useState(TYPE_TIME_MAP.aptitude.medium);
   const [loadingStep, setLoadingStep] = useState(null);
   const [loadingError, setLoadingError] = useState(null);
   const [fullscreenDenied, setFullscreenDenied] = useState(false);
+  const [proctorOverlay, setProctorOverlay] = useState(null);
+  const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const warningViolationRef = useRef(null);
   const { enableExamMode, disableExamMode } = useExam();
   const pendingFullscreenRef = useRef(false);
@@ -89,6 +99,14 @@ export default function AptitudeTest() {
     enableExamMode();
     return () => disableExamMode();
   }, [enableExamMode, disableExamMode]);
+
+  // ─── Proctoring enabled splash (shown once the exam starts) ──────────
+  useEffect(() => {
+    if (!started) return;
+    setProctorOverlay("enabled");
+    const t = setTimeout(() => setProctorOverlay(null), PROCTOR_OVERLAY_MS);
+    return () => clearTimeout(t);
+  }, [started]);
 
   const requestFullscreen = useCallback(() => {
     try {
@@ -127,8 +145,10 @@ export default function AptitudeTest() {
         if (qs.length === 0) throw new Error("No questions available.");
 
         const diff = res?.difficulty || "medium";
+        const testType = res?.type || "aptitude";
         setDifficulty(diff);
-        const timeLimit = TIME_MAP[diff] || TIME_MAP.medium;
+        setType(testType);
+        const timeLimit = (TYPE_TIME_MAP[testType] || TYPE_TIME_MAP.aptitude)[diff] || TYPE_TIME_MAP.aptitude.medium;
         setMaxTime(timeLimit);
         timerRef.current = timeLimit;
 
@@ -248,7 +268,9 @@ export default function AptitudeTest() {
     if (violation.type === "fullscreen-exit") {
       pendingFullscreenRef.current = true;
       // Attempt to restore fullscreen automatically
-      requestFullscreen();
+      requestFullscreen().then((fsOk) => {
+        if (!fsOk) pendingFullscreenRef.current = true;
+      });
     }
 
     if (assessmentId) {
@@ -274,14 +296,18 @@ export default function AptitudeTest() {
   const { warnings } = useAntiCheat({
     onViolation,
     maxWarnings: 3,
-    enabled: started,
+    enabled: started && !submitting,
     currentQuestion: current,
   });
 
-  const handleDismissWarning = useCallback(() => {
+  const handleDismissWarning = useCallback(async () => {
     if (pendingFullscreenRef.current) {
+      const fsOk = await requestFullscreen();
+      if (!fsOk) {
+        setFullscreenDenied(true);
+        return;
+      }
       pendingFullscreenRef.current = false;
-      requestFullscreen();
     }
     setShowWarning(null);
   }, [requestFullscreen]);
@@ -324,17 +350,31 @@ export default function AptitudeTest() {
     hasSubmitted.current = true;
     setSubmitting(true);
 
+    // End proctoring: stop monitoring and leave fullscreen
+    setProctorOverlay("disabled");
+    const overlayStart = Date.now();
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+    } catch { /* ignore */ }
+
     await syncAnswersToServer();
+
+    const holdOverlay = async () => {
+      const elapsed = Date.now() - overlayStart;
+      if (elapsed < PROCTOR_OVERLAY_MS) await new Promise((r) => setTimeout(r, PROCTOR_OVERLAY_MS - elapsed));
+    };
 
     try {
       const res = await completeAssessment(assessmentId);
       const id = res?.id || assessmentId;
       sessionStorage.removeItem(`apt_remaining_${assessmentId}`);
+      await holdOverlay();
       navigate(`/aptitude/results/${id}`, {
         replace: true,
         state: { result: res?.result || res, difficulty, terminated: isTerminated },
       });
     } catch {
+      await holdOverlay();
       navigate("/aptitude", { replace: true });
     } finally {
       setSubmitting(false);
@@ -344,10 +384,16 @@ export default function AptitudeTest() {
   const handleSubmit = useCallback(() => {
     const unanswered = questions.filter((_, i) => answers[i] == null || answers[i] === "" || (Array.isArray(answers[i]) && answers[i].length === 0));
     if (unanswered.length > 0) {
-      if (!window.confirm(`You have ${unanswered.length} unanswered question(s). Submit anyway?`)) return;
+      setShowSubmitConfirm(true);
+      return;
     }
     handleFinalSubmit(false);
   }, [questions, answers, handleFinalSubmit]);
+
+  const handleConfirmSubmit = useCallback(() => {
+    setShowSubmitConfirm(false);
+    handleFinalSubmit(false);
+  }, [handleFinalSubmit]);
 
   const handleTimeUp = useCallback(() => {
     handleFinalSubmit(false);
@@ -368,7 +414,7 @@ export default function AptitudeTest() {
                 <path d="M14 20l4 4 8-8" stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </div>
-            <h2 className="apt-loading-title">Preparing Your Assessment</h2>
+            <h2 className="apt-loading-title">Preparing Your {MODULE_LABELS[type] || "Aptitude"} Assessment</h2>
             <StepIndicator steps={STEPS} currentKey={loadingStep} error={loadingError} />
             {loadingError && (
               <button className="apt-loading-retry-btn" onClick={() => window.location.reload()}>
@@ -412,7 +458,15 @@ export default function AptitudeTest() {
       <button className="apt-retry-btn" onClick={() => navigate(`/aptitude/test?id=${assessmentId}`, { replace: true })}>Try Again</button>
     </div></div></div>);
 
-  if (terminated) return null;
+  if (terminated) {
+    return (
+      <div className="apt-test-root">
+        <AnimatePresence>
+          {proctorOverlay && <ProctoringOverlay key="proctor" state={proctorOverlay} />}
+        </AnimatePresence>
+      </div>
+    );
+  }
 
   if (!started || questions.length === 0) return null;
 
@@ -426,6 +480,7 @@ export default function AptitudeTest() {
       {/* Top Bar */}
       <div className="apt-topbar">
         <div className="apt-topbar-left">
+          <span className={`apt-test-module apt-test-module-${type}`}>{MODULE_LABELS[type] || "Aptitude"}</span>
           <LiveTimer initialSeconds={timerRef.current} onTimeUp={handleTimeUp} running={started && !submitting} />
           <div className="apt-topbar-progress">
             <span className="apt-progress-text">Q{current + 1}/{questions.length}</span>
@@ -525,7 +580,151 @@ export default function AptitudeTest() {
           </motion.div>
         </div>
       )}
+
+      {/* Proctoring status overlay */}
+      <AnimatePresence>
+        {proctorOverlay && <ProctoringOverlay key="proctor" state={proctorOverlay} />}
+      </AnimatePresence>
+
+      {/* Submit Confirmation Modal */}
+      <AnimatePresence>
+        {showSubmitConfirm && (
+          <SubmitConfirmModal
+            questions={questions}
+            answers={answers}
+            review={review}
+            onConfirm={handleConfirmSubmit}
+            onCancel={() => setShowSubmitConfirm(false)}
+          />
+        )}
+      </AnimatePresence>
     </div>
+  );
+}
+
+function SubmitConfirmModal({ questions, answers, review, onConfirm, onCancel }) {
+  const total = questions.length;
+  const answered = Object.keys(answers).filter((k) => answers[k] != null && answers[k] !== "" && !(Array.isArray(answers[k]) && answers[k].length === 0)).length;
+  const unanswered = total - answered;
+  const marked = review.size;
+  const hasUnanswered = unanswered > 0;
+
+  return (
+    <motion.div className="apt-modal-overlay apt-submit-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.25 }} onClick={onCancel}>
+      <motion.div className="apt-submit-modal" initial={{ scale: 0.92, y: 20, opacity: 0 }} animate={{ scale: 1, y: 0, opacity: 1 }} exit={{ scale: 0.96, y: 10, opacity: 0 }} transition={{ type: "spring", stiffness: 300, damping: 24 }} onClick={(e) => e.stopPropagation()}>
+        <div className="apt-submit-glow" />
+        <div className="apt-submit-icon-wrap">
+          <svg viewBox="0 0 24 24" fill="none" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" stroke="currentColor" />
+            <rect x="9" y="3" width="6" height="4" rx="1" stroke="currentColor" />
+            <path d="M9 14l2 2 4-4" stroke="currentColor" strokeWidth="2.2" />
+          </svg>
+        </div>
+        <h3 className="apt-submit-title">{hasUnanswered ? "Submit with unanswered questions?" : "Ready to submit?"}</h3>
+        <p className="apt-submit-desc">
+          {hasUnanswered
+            ? `You still have ${unanswered} unanswered question${unanswered > 1 ? "s" : ""} out of ${total}. You can return to complete them or submit now.`
+            : `You have answered all ${total} questions. Review once more before final submission.`}
+        </p>
+
+        <div className="apt-submit-stats">
+          <div className="apt-submit-stat answered">
+            <span className="apt-submit-stat-val">{answered}</span>
+            <span className="apt-submit-stat-label">Answered</span>
+          </div>
+          <div className="apt-submit-stat unanswered">
+            <span className="apt-submit-stat-val">{unanswered}</span>
+            <span className="apt-submit-stat-label">Unanswered</span>
+          </div>
+          <div className="apt-submit-stat marked">
+            <span className="apt-submit-stat-val">{marked}</span>
+            <span className="apt-submit-stat-label">Marked</span>
+          </div>
+        </div>
+
+        {hasUnanswered && (
+          <div className="apt-submit-hint">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><path d="M12 8v4m0 4h.01" /></svg>
+            Unanswered questions will be marked as skipped and scored as 0.
+          </div>
+        )}
+
+        <div className="apt-submit-actions">
+          <button className="apt-submit-btn apt-submit-btn-secondary" onClick={onCancel}>Continue Exam</button>
+          <button className="apt-submit-btn apt-submit-btn-primary" onClick={onConfirm}>
+            <span>{hasUnanswered ? "Submit Anyway" : "Submit Assessment"}</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ─── Proctoring status overlay ───────────────────────────────────────────
+
+function ProctoringOverlay({ state }) {
+  const enabled = state === "enabled";
+  return (
+    <motion.div className="apt-proctor-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.4 }}>
+      <div className={`apt-proctor-glow ${enabled ? "on" : "off"}`} />
+      <motion.div
+        className="apt-proctor-card"
+        initial={{ scale: 0.88, y: 28, opacity: 0 }}
+        animate={{ scale: 1, y: 0, opacity: 1 }}
+        exit={{ scale: 0.94, y: -16, opacity: 0 }}
+        transition={{ type: "spring", stiffness: 240, damping: 22 }}
+      >
+        <div className={`apt-proctor-shield ${enabled ? "on" : "off"}`}>
+          <span className="apt-proctor-ring r1" />
+          <span className="apt-proctor-ring r2" />
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+            {enabled
+              ? <polyline points="8.5 11.5 11 14 15.5 9.5" />
+              : <line x1="8" y1="12" x2="16" y2="12" />}
+          </svg>
+        </div>
+
+        <div className={`apt-proctor-status ${enabled ? "on" : "off"}`}>
+          <span className="apt-proctor-pulse" />
+          {enabled ? "PROCTORING ENABLED" : "PROCTORING DISABLED"}
+        </div>
+
+        <h3 className="apt-proctor-title">{enabled ? "Secure Exam Mode Active" : "Monitoring Ended"}</h3>
+        <p className="apt-proctor-sub">
+          {enabled
+            ? "This session is monitored to keep the assessment fair for everyone."
+            : "All monitoring has stopped. Preparing your results…"}
+        </p>
+
+        {enabled && (
+          <div className="apt-proctor-tips">
+            <div className="apt-proctor-tip">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" /></svg>
+              Stay in fullscreen for the whole test
+            </div>
+            <div className="apt-proctor-tip">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="4" width="20" height="16" rx="2" /><path d="M2 8h20" /></svg>
+              Don't switch tabs, apps or windows
+            </div>
+            <div className="apt-proctor-tip">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" /><path d="M12 9v4m0 4h.01" /></svg>
+              3 violations automatically end the exam
+            </div>
+          </div>
+        )}
+
+        <div className="apt-proctor-timer">
+          <motion.div
+            className={`apt-proctor-timer-fill ${enabled ? "on" : "off"}`}
+            initial={{ width: "100%" }}
+            animate={{ width: "0%" }}
+            transition={{ duration: 3, ease: "linear" }}
+          />
+        </div>
+      </motion.div>
+    </motion.div>
   );
 }
 

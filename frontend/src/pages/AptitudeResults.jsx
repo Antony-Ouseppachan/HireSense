@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
-import { useParams, Link, useLocation } from "react-router-dom";
+import { useParams, Link, useLocation, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { getAptitudeResult } from "../services/apiService";
+import { getAptitudeResult, reattemptAssessment } from "../services/apiService";
 import LoadingSpinner from "../components/LoadingSpinner";
 import "../styles/Aptitude.css";
 
@@ -40,14 +40,34 @@ function AnimatedBar({ name, pct, className = "" }) {
 const container = { hidden: {}, show: { transition: { staggerChildren: 0.06 } } };
 const itemAnim = { hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.16, 1, 0.3, 1] } } };
 
+const MODULE_LABELS = { aptitude: "Aptitude", general_knowledge: "General Knowledge" };
+
 export default function AptitudeResults() {
   const { id } = useParams();
   const location = useLocation();
+  const navigate = useNavigate();
   const stateResult = location.state?.result;
 
   const [result, setResult] = useState(stateResult || null);
   const [loading, setLoading] = useState(!stateResult);
   const [error, setError] = useState(null);
+  const [reattempting, setReattempting] = useState(false);
+  const [reattemptError, setReattemptError] = useState(null);
+
+  const handleReattempt = async () => {
+    if (reattempting) return;
+    setReattempting(true);
+    setReattemptError(null);
+    try {
+      const res = await reattemptAssessment(id);
+      const newId = res?.assessmentId;
+      if (!newId) throw new Error("No assessment created");
+      navigate(`/aptitude/test?id=${newId}`);
+    } catch {
+      setReattemptError("Could not start a reattempt. Please try again.");
+      setReattempting(false);
+    }
+  };
 
   useEffect(() => {
     if (stateResult) return;
@@ -82,6 +102,8 @@ export default function AptitudeResults() {
   const accuracy = correct > 0 ? (correct / (correct + incorrect)) * 100 : 0;
   const status = r.terminated ? "disqualified" : score >= 40 ? "passed" : "failed";
   const difficulty = r.difficulty || "medium";
+  const type = r.type || "aptitude";
+  const moduleLabel = MODULE_LABELS[type] || "Aptitude";
   const timeTaken = r.timeTaken || r.duration || 0;
   const mins = Math.floor(timeTaken / 60);
   const secs = timeTaken % 60;
@@ -104,7 +126,8 @@ export default function AptitudeResults() {
         <motion.div className="apt-results-header" variants={itemAnim}>
           <ScoreRing pct={score} />
           <div className={`apt-status-badge apt-status-${status}`}>{status === "passed" ? "Passed" : status === "failed" ? "Failed" : "Disqualified"}</div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, fontFamily: "var(--font-heading)", color: "var(--text-primary)", margin: "4px 0 0", letterSpacing: "-0.02em" }}>Assessment Complete</h1>
+          <span className={`apt-result-module apt-result-module-${type}`}>{moduleLabel}</span>
+          <h1 style={{ fontSize: 22, fontWeight: 700, fontFamily: "var(--font-heading)", color: "var(--text-primary)", margin: "4px 0 0", letterSpacing: "-0.02em" }}>{moduleLabel} Assessment Complete</h1>
           <div className="apt-results-meta">
             <span>{difficulty.charAt(0).toUpperCase() + difficulty.slice(1)} Difficulty</span>
             <span>{mins}m {secs}s</span>
@@ -221,9 +244,27 @@ export default function AptitudeResults() {
 
         {/* Actions */}
         <motion.div className="apt-results-actions" variants={itemAnim}>
-          <Link to="/aptitude/history" className="apt-action-btn">View Assessment History</Link>
-          <Link to="/aptitude" className="apt-action-btn">Take Another Test</Link>
-          <Link to="/dashboard" className="apt-action-btn">Back to Dashboard</Link>
+          <button className="apt-start-btn apt-results-reattempt-btn" onClick={handleReattempt} disabled={reattempting}>
+            {reattempting ? (
+              <>
+                <span className="apt-cta-spinner" aria-hidden="true" />
+                <span>Preparing Reattempt...</span>
+              </>
+            ) : (
+              <>
+                <svg className="apt-cta-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 4v6h6" /><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" /></svg>
+                <span>Reattempt This Quiz</span>
+                <span className="apt-cta-meta">{total} Q · Same Questions</span>
+              </>
+            )}
+          </button>
+          {reattemptError && <p className="apt-start-hint" style={{ color: "#F87171" }}>{reattemptError}</p>}
+          <div className="apt-results-secondary-actions">
+            <Link to={`/aptitude/review/${id}`} className="apt-action-btn apt-action-btn-primary">View Remarks &amp; Answers</Link>
+            <Link to="/aptitude/history" className="apt-action-btn">View Assessment History</Link>
+            <Link to="/aptitude" className="apt-action-btn">Take Another Test</Link>
+            <Link to="/dashboard" className="apt-action-btn">Back to Dashboard</Link>
+          </div>
         </motion.div>
       </div>
     </motion.div>

@@ -38,9 +38,9 @@ function createParticles(width, height) {
 export default function SplashScreen({
   onComplete,
   ready = true,
-  minDurationMs = 2200,
-  maxHoldMs = 6000,
-  exitDurationMs = 950,
+  minDurationMs = 1000,
+  maxHoldMs = 2500,
+  exitDurationMs = 500,
   tagline = "AI-Powered Mock Interview Platform",
 }) {
   const canvasRef = useRef(null);

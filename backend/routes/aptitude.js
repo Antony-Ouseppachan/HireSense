@@ -12,10 +12,12 @@ const {
   logMalpractice,
   complete,
   cancel,
+  reattempt,
   getHistory,
   getResult,
   getRemarks,
   getRemarkDetail,
+  getReview,
 } = require("../controllers/aptitudeController");
 
 // ─── Assessment Lifecycle ──────────────────────────────────────────────────
@@ -29,6 +31,8 @@ router.post("/assessment/:id/answer", authenticateToken, saveAnswer);
 router.post("/assessment/:id/malpractice", authenticateToken, logMalpractice);
 router.post("/assessment/:id/complete", authenticateToken, complete);
 router.post("/assessment/:id/cancel",  authenticateToken, cancel);
+router.post("/assessment/:id/reattempt", authenticateToken, reattempt);
+router.get("/assessment/:id/review",   authenticateToken, getReview);
 
 // ─── Legacy / Existing ─────────────────────────────────────────────────────
 router.get("/history",              authenticateToken, getHistory);

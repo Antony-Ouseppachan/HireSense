@@ -12,7 +12,7 @@ export default function Logo({ size = 32, variant = "mono", className }) {
       {/* Outer orbit ring */}
       <circle
         cx="50" cy="50" r="43"
-        stroke={glow ? "url(#lg)" : "#FFFFFF"}
+        stroke={glow ? "url(#lg)" : "currentColor"}
         strokeWidth="2"
         opacity={glow ? 0.5 : 0.3}
       />
@@ -20,33 +20,33 @@ export default function Logo({ size = 32, variant = "mono", className }) {
       {/* Inner orbit ring */}
       <circle
         cx="50" cy="50" r="33"
-        stroke={glow ? "url(#lg)" : "#FFFFFF"}
+        stroke={glow ? "url(#lg)" : "currentColor"}
         strokeWidth="1"
         opacity={glow ? 0.3 : 0.15}
         strokeDasharray="4 8"
       />
 
       {/* Crosshair axis lines */}
-      <line x1="50" y1="8" x2="50" y2="22" stroke="#FFFFFF" strokeWidth="1.2" opacity={glow ? 0.4 : 0.2} />
-      <line x1="50" y1="78" x2="50" y2="92" stroke="#FFFFFF" strokeWidth="1.2" opacity={glow ? 0.4 : 0.2} />
-      <line x1="8" y1="50" x2="22" y2="50" stroke="#FFFFFF" strokeWidth="1.2" opacity={glow ? 0.4 : 0.2} />
-      <line x1="78" y1="50" x2="92" y2="50" stroke="#FFFFFF" strokeWidth="1.2" opacity={glow ? 0.4 : 0.2} />
+      <line x1="50" y1="8" x2="50" y2="22" stroke="currentColor" strokeWidth="1.2" opacity={glow ? 0.4 : 0.2} />
+      <line x1="50" y1="78" x2="50" y2="92" stroke="currentColor" strokeWidth="1.2" opacity={glow ? 0.4 : 0.2} />
+      <line x1="8" y1="50" x2="22" y2="50" stroke="currentColor" strokeWidth="1.2" opacity={glow ? 0.4 : 0.2} />
+      <line x1="78" y1="50" x2="92" y2="50" stroke="currentColor" strokeWidth="1.2" opacity={glow ? 0.4 : 0.2} />
 
       {/* Core satellite ring */}
       <circle
         cx="50" cy="50" r="16"
-        stroke={glow ? "url(#lg)" : "#FFFFFF"}
+        stroke={glow ? "url(#lg)" : "currentColor"}
         strokeWidth="1.5"
         opacity={glow ? 0.6 : 0.25}
       />
 
       {/* Center node */}
       {glow ? (
-        <circle cx="50" cy="50" r="6" fill="#ffffff" filter="url(#lf)">
+        <circle cx="50" cy="50" r="6" fill="currentColor" filter="url(#lf)">
           <animate attributeName="opacity" values="0.7;1;0.7" dur="3s" repeatCount="indefinite" begin="1s" />
         </circle>
       ) : (
-        <circle cx="50" cy="50" r="6" fill="#FFFFFF" opacity="0.7" />
+        <circle cx="50" cy="50" r="6" fill="currentColor" opacity="0.7" />
       )}
 
       {/* Orbital node indicators */}
@@ -60,7 +60,7 @@ export default function Logo({ size = 32, variant = "mono", className }) {
             cx={cx}
             cy={cy}
             r="2.5"
-            fill="#FFFFFF"
+            fill="currentColor"
             opacity={glow ? 0.5 : 0.2}
           />
         );

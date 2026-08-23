@@ -15,6 +15,22 @@
   overflow: hidden;
 }
 
+/* Ensure hero content stays above canvas */
+.hero-content {
+  position: relative;
+  z-index: 2;
+}
+
+.hero-badge {
+  position: relative;
+  z-index: 1;
+}
+
+.hero-stats {
+  position: relative;
+  z-index: 1;
+}
+
 /* Floating shapes */
 .hero-floating-shapes {
   position: absolute;
@@ -62,13 +78,23 @@
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.15em;
-  color: var(--text-muted);
+  color: #fff;
   padding: 7px 18px;
   border: 1px solid var(--border-color);
   border-radius: 100px;
   background: var(--glass-bg);
   backdrop-filter: blur(12px);
   text-transform: uppercase;
+  animation: badgeGlow 3s ease-in-out infinite;
+}
+
+@keyframes badgeGlow {
+  0%, 100% {
+    box-shadow: 0 0 6px rgba(41, 182, 255, 0.15), 0 0 20px rgba(41, 182, 255, 0.06);
+  }
+  50% {
+    box-shadow: 0 0 12px rgba(41, 182, 255, 0.3), 0 0 40px rgba(41, 182, 255, 0.12);
+  }
 }
 
 .hero-badge-dot {
@@ -81,6 +107,10 @@
 
 [data-theme="light"] .hero-badge-dot {
   background: #2563EB;
+}
+
+[data-theme="light"] .hero-badge {
+  color: #000;
 }
 
 @keyframes badgePulse {
@@ -529,3 +559,252 @@
     padding: 20px 0;
   }
 }
+
+/* Homepage Hero Search Showcase Mockup Card */
+.hero-search-showcase-container {
+  margin-top: 24px;
+  width: 100%;
+  max-width: 520px;
+  z-index: 5;
+}
+
+.search-showcase-card {
+  width: 100%;
+  background: rgba(10, 11, 16, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 16px;
+  backdrop-filter: blur(20px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.5);
+  animation: cardPulseBorder 4s infinite ease-in-out;
+}
+
+[data-theme="light"] .search-showcase-card {
+  background: rgba(255, 255, 255, 0.7);
+  border-color: rgba(37, 99, 235, 0.15);
+  box-shadow: 0 20px 48px rgba(37, 99, 235, 0.05);
+  animation: cardPulseBorderLight 4s infinite ease-in-out;
+}
+
+.search-showcase-card:hover {
+  transform: translateY(-3px);
+  animation: none;
+  border-color: rgba(102, 252, 241, 0.55);
+  box-shadow: 0 24px 64px rgba(102, 252, 241, 0.15);
+}
+
+[data-theme="light"] .search-showcase-card:hover {
+  border-color: rgba(37, 99, 235, 0.5);
+  box-shadow: 0 24px 64px rgba(37, 99, 235, 0.12);
+}
+
+.mock-input-row {
+  display: flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 10px;
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  gap: 10px;
+  height: 40px;
+}
+
+[data-theme="light"] .mock-input-row {
+  background: rgba(0, 0, 0, 0.02);
+  border-color: rgba(0, 0, 0, 0.04);
+}
+
+.mock-search-icon {
+  width: 15px;
+  height: 15px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.mock-input-text {
+  flex: 1;
+  text-align: left;
+  font-size: 13.5px;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.mock-cursor {
+  width: 1.5px;
+  height: 14px;
+  --mock-cursor-color: #66FCF1;
+  background: var(--mock-cursor-color);
+  animation: mockBlink 1s infinite step-end;
+}
+
+[data-theme="light"] .mock-cursor {
+  --mock-cursor-color: var(--accent);
+}
+
+@keyframes mockBlink {
+  from, to { background-color: transparent }
+  50% { background-color: var(--mock-cursor-color) }
+}
+
+.mock-kbd-badge {
+  font-size: 9px;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--text-secondary);
+}
+
+[data-theme="light"] .mock-kbd-badge {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.06);
+}
+
+.mock-results-container {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 100px;
+}
+
+.mock-result-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 8px;
+  gap: 12px;
+  background: transparent;
+  transition: all 0.2s ease;
+}
+
+.mock-result-item.active {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+[data-theme="light"] .mock-result-item.active {
+  background: rgba(37, 99, 235, 0.03);
+}
+
+.mock-item-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+[data-theme="light"] .mock-item-icon {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.mock-result-item.active .mock-item-icon {
+  background: rgba(102, 252, 241, 0.12);
+  color: #66FCF1;
+  border: 1px solid rgba(102, 252, 241, 0.1);
+}
+
+[data-theme="light"] .mock-result-item.active .mock-item-icon {
+  background: rgba(37, 99, 235, 0.1);
+  color: var(--accent);
+  border-color: rgba(37, 99, 235, 0.08);
+}
+
+.mock-icon-svg {
+  width: 14px;
+  height: 14px;
+}
+
+.mock-item-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+}
+
+.mock-item-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.mock-item-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 1px;
+}
+
+.mock-item-badge {
+  font-size: 8.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 2px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+[data-theme="light"] .mock-item-badge {
+  background: rgba(0, 0, 0, 0.02);
+  border-color: rgba(0, 0, 0, 0.04);
+}
+
+.showcase-caption {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  letter-spacing: 0.1px;
+  text-align: center;
+}
+
+.showcase-caption kbd {
+  font-family: inherit;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+/* Attractor Keyframes */
+@keyframes cardPulseBorder {
+  0%, 100% {
+    border-color: rgba(102, 252, 241, 0.2);
+    box-shadow: 0 20px 48px rgba(0, 0, 0, 0.45);
+  }
+  50% {
+    border-color: rgba(167, 139, 250, 0.5);
+    box-shadow: 0 20px 48px rgba(167, 139, 250, 0.06);
+  }
+}
+
+@keyframes cardPulseBorderLight {
+  0%, 100% {
+    border-color: rgba(37, 99, 235, 0.12);
+    box-shadow: 0 20px 48px rgba(37, 99, 235, 0.04);
+  }
+  50% {
+    border-color: rgba(167, 139, 250, 0.4);
+    box-shadow: 0 20px 48px rgba(167, 139, 250, 0.08);
+  }
+}
+
+@media (max-width: 576px) {
+  .mock-item-desc {
+    display: none;
+  }
+  .mock-results-container {
+    min-height: 80px;
+  }
+}
+
+

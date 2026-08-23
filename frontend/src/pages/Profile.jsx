@@ -1,7 +1,9 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import AutocompleteInput from "../components/AutocompleteInput.jsx";
 import LoadingSpinner from "/src/components/LoadingSpinner.jsx";
 import { useAuth } from "/src/context/AuthContext.jsx";
+import { sendEmailVerification } from "firebase/auth";
 import {
   getProfile, saveProfile,
   addEducation, updateEducation, deleteEducation,
@@ -34,7 +36,7 @@ function getInitials(first, last, email) {
 }
 
 export default function Profile() {
-  const { user } = useAuth();
+  const { user, firebaseUser, emailVerified, refreshVerificationStatus } = useAuth();
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -74,6 +76,68 @@ export default function Profile() {
     setTimeout(() => setToast(null), 3000);
   }, []);
 
+  // Email Verification
+  const [verifying, setVerifying] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
+  const cooldownRef = useRef(null);
+  const verificationRef = useRef(null);
+
+  useEffect(() => {
+    if (cooldown > 0) {
+      cooldownRef.current = setInterval(() => {
+        setCooldown((c) => {
+          if (c <= 1) {
+            clearInterval(cooldownRef.current);
+            return 0;
+          }
+          return c - 1;
+        });
+      }, 1000);
+      return () => clearInterval(cooldownRef.current);
+    }
+  }, [cooldown]);
+
+  const handleSendVerification = async () => {
+    if (!firebaseUser || emailVerified || sendingEmail || cooldown > 0) return;
+    setSendingEmail(true);
+    try {
+      const alreadyVerified = await refreshVerificationStatus();
+      if (alreadyVerified) {
+        showToast("Your email is already verified!", "success");
+        return;
+      }
+      await sendEmailVerification(firebaseUser);
+      showToast("Verification email sent successfully.", "success");
+      setCooldown(60);
+    } catch (e) {
+      const msg =
+        e.code === "auth/too-many-requests"
+          ? "Too many requests. Please wait before trying again."
+          : e?.message || "Failed to send verification email.";
+      showToast(msg, "error");
+    } finally {
+      setSendingEmail(false);
+    }
+  };
+
+  const handleRefreshVerification = async () => {
+    if (!firebaseUser || verifying) return;
+    setVerifying(true);
+    try {
+      const verified = await refreshVerificationStatus();
+      if (verified) {
+        showToast("Email verified successfully!", "success");
+      } else {
+        showToast("Email not verified yet. Check your inbox and click the link.", "error");
+      }
+    } catch (e) {
+      showToast(e?.message || "Failed to check verification status.", "error");
+    } finally {
+      setVerifying(false);
+    }
+  };
+
   // Load
   useEffect(() => {
     (async () => {
@@ -96,14 +160,25 @@ export default function Profile() {
     })();
   }, []);
 
+  // Auto-scroll to verification section
+  useEffect(() => {
+    if (loading) return;
+    const hash = window.location.hash;
+    if (hash === "#verification" && verificationRef.current) {
+      setTimeout(() => {
+        verificationRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 200);
+    }
+  }, [loading]);
+
   const initials = getInitials(firstName, lastName, user?.email);
 
   // Save basic info
   const handleSaveBasic = async () => {
     try {
       await saveProfile({ first_name: firstName, last_name: lastName, target_role_id: targetRoleId || null, experience_level: experienceLevel });
-      showToast("Profile saved");
-    } catch (e) { showToast(e?.message || "Failed to save", "error"); }
+      showToast("Profile details updated successfully");
+    } catch (e) { showToast(e?.message || "Failed to save profile", "error"); }
   };
 
   // ─── Education ───
@@ -119,7 +194,8 @@ export default function Profile() {
     try {
       const res = await updateEducation(id, data);
       setEducation(prev => prev.map(e => e.id === id ? { ...e, ...res } : e));
-    } catch (e) { showToast(e?.message || "Failed to update", "error"); }
+      showToast("Academic history updated");
+    } catch (e) { showToast(e?.message || "Failed to update education", "error"); }
   };
 
   const handleDeleteEdu = async (id) => {
@@ -162,7 +238,8 @@ export default function Profile() {
     try {
       const res = await updateProject(id, data);
       setProjects(prev => prev.map(p => p.id === id ? { ...p, ...res } : p));
-    } catch (e) { showToast(e?.message || "Failed to update", "error"); }
+      showToast("Project details saved");
+    } catch (e) { showToast(e?.message || "Failed to update project", "error"); }
   };
 
   const handleDeleteProject = async (id) => {
@@ -265,6 +342,51 @@ export default function Profile() {
             )}
           </div>
 
+          {/* ─── Account Verification ─── */}
+          <div className="card verify-card" id="verification" ref={verificationRef}>
+            {emailVerified ? (
+              <div className="verify-verified">
+                <div className="verify-badge-blue">
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="12" r="12" fill="#1D9BF0" />
+                    <path d="M7 12.5l3.5 3.5 6.5-6.5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </div>
+                <span className="verify-status-text">Verified Account</span>
+              </div>
+            ) : (
+              <div className="verify-unverified">
+                <div className="verify-header">
+                  <span className="card-label">ACCOUNT VERIFICATION</span>
+                </div>
+                <div className="verify-warning-icon">⚠</div>
+                <span className="verify-status-text warn">Account Not Verified</span>
+                <p className="verify-desc">Your email address has not been verified. Verify your account to unlock Interview Studio and all premium platform features.</p>
+                <div className="verify-email-display">{firebaseUser?.email}</div>
+                <div className="verify-actions">
+                  <button
+                    className="verify-btn-primary"
+                    onClick={handleSendVerification}
+                    disabled={sendingEmail || cooldown > 0}
+                  >
+                    {cooldown > 0
+                      ? `Resend in ${cooldown}s`
+                      : sendingEmail
+                        ? "Sending..."
+                        : "Send Verification Email"}
+                  </button>
+                  <button
+                    className="verify-btn-secondary"
+                    onClick={handleRefreshVerification}
+                    disabled={verifying}
+                  >
+                    {verifying ? "Checking..." : "Refresh Status"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="card modules-card">
             <span className="card-label">MODULES</span>
             {[
@@ -323,7 +445,20 @@ export default function Profile() {
             <span className="card-label">TARGET ROLE <span className="required">*</span></span>
             <AutocompleteInput
               value={targetRoleId ? (profile?.target_role_name || "") : ""}
-              onChange={v => { setTargetRoleId(v); setTargetRoleError(""); }}
+              onChange={async (v) => {
+                setTargetRoleId(v);
+                setTargetRoleError("");
+                if (v) {
+                  try {
+                    await saveProfile({ first_name: firstName, last_name: lastName, target_role_id: v, experience_level: experienceLevel });
+                    const res = await getProfile();
+                    setProfile(res?.profile || {});
+                    showToast("Target role saved successfully");
+                  } catch (err) {
+                    showToast("Failed to save target role", "error");
+                  }
+                }
+              }}
               onBlur={() => { if (!targetRoleId) setTargetRoleError("Please select a valid role."); }}
               search={searchRoles}
               placeholder="Search for a role..."
@@ -357,10 +492,21 @@ export default function Profile() {
           {/* 5. Experience Level */}
           <div className="card section-card">
             <span className="card-label">EXPERIENCE LEVEL</span>
-            <select value={experienceLevel} onChange={e => { setExperienceLevel(e.target.value); saveProfile({ first_name: firstName, last_name: lastName, target_role_id: targetRoleId || null, experience_level: e.target.value }); }}>
-              <option value="">Select...</option>
-              {EXPERIENCE_LEVELS.map(l => <option key={l} value={l}>{l}</option>)}
-            </select>
+            <div className="field">
+              <select value={experienceLevel} onChange={async (e) => {
+                const val = e.target.value;
+                setExperienceLevel(val);
+                try {
+                  await saveProfile({ first_name: firstName, last_name: lastName, target_role_id: targetRoleId || null, experience_level: val });
+                  showToast("Experience level updated successfully");
+                } catch (err) {
+                  showToast(err?.message || "Failed to save experience level", "error");
+                }
+              }}>
+                <option value="">Select experience level...</option>
+                {EXPERIENCE_LEVELS.map(l => <option key={l} value={l}>{l}</option>)}
+              </select>
+            </div>
           </div>
 
           {/* 6. Projects */}
@@ -431,17 +577,18 @@ export default function Profile() {
       </div>
 
       {/* Resume viewer */}
-      {showResumeViewer && (
+      {showResumeViewer && createPortal(
         <div className="viewer-modal-overlay" role="dialog" onClick={() => setShowResumeViewer(false)}>
           <div className="viewer-modal" onClick={e => e.stopPropagation()}>
             <button className="viewer-close" onClick={() => setShowResumeViewer(false)}>&times;</button>
             <iframe src={resumeUrl} title="Resume" className="viewer-iframe" />
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Resume delete confirmation */}
-      {showDeleteConfirm && (
+      {showDeleteConfirm && createPortal(
         <div className="confirm-modal-overlay" role="dialog">
           <div className="confirm-modal">
             <p className="confirm-title">Delete resume?</p>
@@ -451,10 +598,28 @@ export default function Profile() {
               <button className="confirm-button confirm-button-danger" onClick={handleDeleteResume} disabled={isDeleting}>{isDeleting ? "Deleting..." : "Delete"}</button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {toast && <div className={`toast toast-${toast.type}`}>{toast.msg}</div>}
+      {toast && createPortal(
+        <div className={`toast toast-${toast.type}`}>
+          {toast.type === "success" ? (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: '16px', height: '16px', flexShrink: 0 }}>
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+              <polyline points="22 4 12 14.01 9 11.01" />
+            </svg>
+          ) : (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: '16px', height: '16px', flexShrink: 0 }}>
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+          )}
+          <span>{toast.msg}</span>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }

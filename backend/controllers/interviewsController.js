@@ -1,5 +1,6 @@
 const db = require("../config/database");
 const { askAI } = require("../services/ai");
+const { analyzeResponses } = require("../services/nlpService");
 
 async function resolveUserId(firebaseUid) {
   const result = await db.query("SELECT id FROM users WHERE firebase_uid = $1", [firebaseUid]);
@@ -27,13 +28,7 @@ function generateFallbackQuestions(profile, category) {
       { question: "What is the SI unit of electric current?", options: ["Volt", "Ohm", "Ampere", "Watt"], answer: "Ampere", explanation: "The ampere (A) is the SI base unit of electric current." },
       { question: "In which year did India launch its first satellite?", options: ["1972", "1975", "1978", "1980"], answer: "1975", explanation: "Aryabhata, India's first satellite, was launched on April 19, 1975." },
     ],
-    english: [
-      { question: "Choose the correct spelling:", options: ["Accomodate", "Acommodate", "Accommodate", "Acomodate"], answer: "Accommodate", explanation: "Accommodate has double c and double m." },
-      { question: "What is the synonym of 'Ubiquitous'?", options: ["Rare", "Omnipresent", "Unique", "Absent"], answer: "Omnipresent", explanation: "Ubiquitous means present everywhere, synonymous with omnipresent." },
-      { question: "Identify the error: 'Neither the manager nor his team were present.'", options: ["Neither", "Nor", "Were", "No error"], answer: "Were", explanation: "With 'neither...nor', the verb agrees with the nearest subject. 'Team' is singular, so 'was' is correct." },
-      { question: "Change to passive voice: 'She writes a letter.'", options: ["A letter is written by her.", "A letter was written.", "A letter is being written.", "She is writing a letter."], answer: "A letter is written by her.", explanation: "Passive: object + is/am/are + past participle + by + subject." },
-      { question: "What figure of speech is 'The world is a stage'?", options: ["Simile", "Metaphor", "Personification", "Hyperbole"], answer: "Metaphor", explanation: "A direct comparison without 'like' or 'as' is a metaphor." },
-    ],
+    // english pool removed — now handled by enterprise English assessment (aptitude_assessments with assessment_type='english_communication')
   };
 
   const pool = pools[category] || pools.aptitude;
@@ -49,7 +44,7 @@ async function generateAIQuestions(profile, category, difficulty, duration, mode
   const categoryDescriptions = {
     aptitude: "Generate MCQ aptitude questions covering quantitative aptitude, logical reasoning, data interpretation, and analytical reasoning. Include 4 options per question with the correct answer and explanation.",
     gk: "Generate MCQ general knowledge questions covering current affairs, science, technology, computer basics, and business. Include 4 options per question with the correct answer and explanation.",
-    english: "Generate MCQ English language questions covering grammar, vocabulary, reading comprehension, and verbal ability. Include 4 options per question with the correct answer and explanation.",
+    // english removed — enterprise English now via questionGenerator buildEnglishPrompt (token-optimized, deterministic bank)
     technical: "Generate technical interview questions based on the candidate's tech stack. Each question should test depth of knowledge.",
     resume: "Generate interview questions personalized to the candidate's projects and experience as described in their resume.",
     coding: "Generate coding challenge questions with problem descriptions and expected solution approaches.",
@@ -169,14 +164,36 @@ async function submitInterviewResponses(req, res) {
       return res.status(400).json({ message: "Responses missing or invalid." });
     }
 
+    const nlpAnalysis = analyzeResponses(responses);
+
+    // Keep the existing interview score behavior stable while enriching each
+    // response with deterministic NLP/fluency metrics.
     const score = Math.min(100, 50 + Math.round(Math.random() * 50));
-    const feedback = responses.map((response, index) => ({
-      questionIndex: index,
-      comment: response.answer
-        ? "Good structure. Add a clearer conclusion next time."
-        : "No response provided. Practice concise answers to each prompt.",
-      rating: response.answer ? Math.min(5, Math.max(1, Math.round(response.answer.length / 60))) : 2
-    }));
+    const feedback = responses.map((response, index) => {
+      const nlp = nlpAnalysis.analyzedResponses[index];
+      return {
+        questionIndex: index,
+        comment: response.answer
+          ? "Good structure. Review the fluency suggestions below to make the answer clearer."
+          : "No response provided. Practice concise answers to each prompt.",
+        rating: response.answer ? Math.min(5, Math.max(1, Math.round(response.answer.length / 60))) : 2,
+        fluency: {
+          score: nlp.fluencyScore,
+          level: nlp.level,
+          wordCount: nlp.wordCount,
+          sentenceCount: nlp.sentenceCount,
+          averageSentenceLength: nlp.averageSentenceLength,
+          vocabularyRichness: nlp.vocabularyRichness,
+          readabilityScore: nlp.readabilityScore,
+          fillerWordCount: nlp.fillerWordCount,
+          fillerWords: nlp.fillerWords,
+          repetition: nlp.repetition,
+          transitionUsage: nlp.transitionUsage,
+          sentenceQuality: nlp.sentenceQuality,
+          feedback: nlp.feedback
+        }
+      };
+    });
 
     const result = await db.query(
       `UPDATE mock_interviews
@@ -192,7 +209,14 @@ async function submitInterviewResponses(req, res) {
       return res.status(404).json({ message: "Mock interview session not found." });
     }
 
-    res.json(result.rows[0]);
+    res.json({
+      ...result.rows[0],
+      fluency: {
+        overallScore: nlpAnalysis.overallFluencyScore,
+        answeredCount: nlpAnalysis.answeredCount,
+        totalQuestions: nlpAnalysis.totalQuestions,
+      },
+    });
   } catch (error) {
     console.error("Submit interview responses error", error);
     res.status(500).json({ message: "Failed to submit interview responses." });

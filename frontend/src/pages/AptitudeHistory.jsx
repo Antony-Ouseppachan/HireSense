@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { useState, useEffect, useMemo } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { getAptitudeHistory } from "../services/apiService";
 import LoadingSpinner from "../components/LoadingSpinner";
@@ -7,6 +7,8 @@ import "../styles/Aptitude.css";
 
 const container = { hidden: {}, show: { transition: { staggerChildren: 0.05 } } };
 const item = { hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.16, 1, 0.3, 1] } } };
+
+const MODULE_LABELS = { aptitude: "Aptitude", general_knowledge: "General Knowledge" };
 
 function TimeAgo({ date }) {
   const d = new Date(date);
@@ -22,71 +24,248 @@ function TimeAgo({ date }) {
 }
 
 function StatusBadge({ terminated, score }) {
-  if (terminated) return <span className="apt-status-badge apt-status-disqualified" style={{ fontSize: 11, padding: "2px 10px" }}>Disqualified</span>;
-  if (score >= 40) return <span className="apt-status-badge apt-status-passed" style={{ fontSize: 11, padding: "2px 10px" }}>Passed</span>;
-  return <span className="apt-status-badge apt-status-failed" style={{ fontSize: 11, padding: "2px 10px" }}>Failed</span>;
+  const parsedScore = parseFloat(score) || 0;
+  if (terminated) return <span className="apt-status-badge apt-status-disqualified">Disqualified</span>;
+  if (parsedScore >= 40) return <span className="apt-status-badge apt-status-passed">Passed</span>;
+  return <span className="apt-status-badge apt-status-failed">Failed</span>;
 }
 
 export default function AptitudeHistory() {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  
+  // Filtering & Sorting States
+  const [filter, setFilter] = useState("all");
+  const [difficultyFilter, setDifficultyFilter] = useState("all");
+  const [sortOption, setSortOption] = useState("latest");
+
+  const navigate = useNavigate();
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
+      setLoading(true);
+      setError(null);
       try {
         const res = await getAptitudeHistory();
-        setHistory(res?.history || []);
+        if (!cancelled) setHistory(res?.history || []);
       } catch {
-        setError("Failed to load history");
+        if (!cancelled) setError("Failed to load assessment history logs.");
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     })();
+    return () => { cancelled = true; };
   }, []);
 
-  if (loading) return <div className="apt-page"><div className="apt-loading"><LoadingSpinner label="Loading history..." /></div></div>;
+  // Global parsed stats computation to prevent NaN%
+  const stats = useMemo(() => {
+    if (history.length === 0) return { total: 0, avgScore: 0, avgAccuracy: 0, passed: 0 };
+    const total = history.length;
+    const avgScore = Math.round(history.reduce((acc, h) => acc + (parseFloat(h.score) || 0), 0) / total);
+    const avgAccuracy = Math.round(history.reduce((acc, h) => acc + (parseFloat(h.accuracy) || 0), 0) / total);
+    const passed = history.filter(h => !h.terminated && (parseFloat(h.score) || 0) >= 40).length;
+    return { total, avgScore, avgAccuracy, passed };
+  }, [history]);
+
+  // Client-side filtering & sorting
+  const filteredAndSortedHistory = useMemo(() => {
+    let result = [...history];
+
+    // Apply category filter
+    if (filter !== "all") {
+      result = result.filter((h) => (h.assessment_type || "aptitude") === filter);
+    }
+
+    // Apply difficulty filter
+    if (difficultyFilter !== "all") {
+      result = result.filter((h) => (h.difficulty || "").toLowerCase() === difficultyFilter);
+    }
+
+    // Apply sorting
+    result.sort((a, b) => {
+      if (sortOption === "latest") {
+        return new Date(b.created_at || b.completed_at) - new Date(a.created_at || a.completed_at);
+      }
+      if (sortOption === "score_desc") {
+        return (parseFloat(b.score) || 0) - (parseFloat(a.score) || 0);
+      }
+      if (sortOption === "score_asc") {
+        return (parseFloat(a.score) || 0) - (parseFloat(b.score) || 0);
+      }
+      if (sortOption === "accuracy_desc") {
+        return (parseFloat(b.accuracy) || 0) - (parseFloat(a.accuracy) || 0);
+      }
+      return 0;
+    });
+
+    return result;
+  }, [history, filter, difficultyFilter, sortOption]);
+
+  if (loading) {
+    return (
+      <div className="apt-page">
+        <div className="apt-loading">
+          <LoadingSpinner label="Loading telemetry logs..." />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <motion.div className="apt-page" variants={container} initial="hidden" animate="show">
       <div className="apt-container">
         <motion.div className="apt-header" variants={item}>
+          <div className="apt-header-module" style={{ color: "#38bdf8", borderColor: "rgba(56,189,248,0.3)" }}>
+            <span className="apt-header-module-dot" style={{ backgroundColor: "#38bdf8" }} />
+            Telemetry Deck
+          </div>
           <h1>Assessment History</h1>
-          <p>Your past aptitude assessment results and performance.</p>
+          <p>Your past aptitude and general knowledge assessment results and performance metrics.</p>
         </motion.div>
+
+        {/* Telemetry Stats Deck */}
+        {!error && history.length > 0 && (
+          <motion.div className="apt-history-stats-deck" variants={item}>
+            <div className="history-stat-card">
+              <span className="stat-label">Total Logs</span>
+              <span className="stat-value">{stats.total}</span>
+              <span className="stat-sub">Assessments completed</span>
+            </div>
+            <div className="history-stat-card">
+              <span className="stat-label">Avg Score</span>
+              <span className="stat-value" style={{ color: '#38bdf8' }}>{stats.avgScore}%</span>
+              <span className="stat-sub">Performance index</span>
+            </div>
+            <div className="history-stat-card">
+              <span className="stat-label">Avg Accuracy</span>
+              <span className="stat-value" style={{ color: '#34d399' }}>{stats.avgAccuracy}%</span>
+              <span className="stat-sub">Precision index</span>
+            </div>
+            <div className="history-stat-card">
+              <span className="stat-label">Passing Rate</span>
+              <span className="stat-value" style={{ color: '#a78bfa' }}>
+                {stats.total > 0 ? Math.round((stats.passed / stats.total) * 100) : 0}%
+              </span>
+              <span className="stat-sub">Success checkpoint</span>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Dedicated Filters & Sort Control Row */}
+        {!error && history.length > 0 && (
+          <motion.div className="apt-history-controls" variants={item}>
+            <div className="control-group">
+              <label htmlFor="filter-type">Category</label>
+              <select
+                id="filter-type"
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                className="control-select"
+              >
+                <option value="all">All Categories</option>
+                <option value="aptitude">Aptitude</option>
+                <option value="general_knowledge">General Knowledge</option>
+              </select>
+            </div>
+
+            <div className="control-group">
+              <label htmlFor="filter-difficulty">Difficulty</label>
+              <select
+                id="filter-difficulty"
+                value={difficultyFilter}
+                onChange={(e) => setDifficultyFilter(e.target.value)}
+                className="control-select"
+              >
+                <option value="all">All Difficulties</option>
+                <option value="easy">Easy</option>
+                <option value="medium">Medium</option>
+                <option value="hard">Hard</option>
+              </select>
+            </div>
+
+            <div className="control-group">
+              <label htmlFor="sort-option">Sort By</label>
+              <select
+                id="sort-option"
+                value={sortOption}
+                onChange={(e) => setSortOption(e.target.value)}
+                className="control-select"
+              >
+                <option value="latest">Latest Completed</option>
+                <option value="score_desc">Highest Score</option>
+                <option value="score_asc">Lowest Score</option>
+                <option value="accuracy_desc">Highest Accuracy</option>
+              </select>
+            </div>
+          </motion.div>
+        )}
 
         {error ? (
           <motion.div className="apt-error" variants={item}>
             <p>{error}</p>
             <Link to="/aptitude" className="apt-retry-btn" style={{ textDecoration: "none", display: "inline-block", padding: "10px 24px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.12)", color: "var(--text-primary)" }}>Take a Test</Link>
           </motion.div>
-        ) : history.length === 0 ? (
+        ) : filteredAndSortedHistory.length === 0 ? (
           <motion.div className="apt-empty" variants={item} style={{ textAlign: "center", padding: 60, color: "var(--text-muted)" }}>
-            <p>No assessments taken yet.</p>
+            <p>No assessment records registered on this filter.</p>
             <Link to="/aptitude" className="apt-retry-btn" style={{ textDecoration: "none", display: "inline-block", marginTop: 16, padding: "10px 24px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.12)", color: "var(--text-primary)" }}>Start Your First Test</Link>
           </motion.div>
         ) : (
           <motion.div className="apt-history-list" variants={item}>
-            {history.map((h) => (
-              <Link key={h.id} to={`/aptitude/results/${h.id}`} className="apt-history-card" style={{ textDecoration: "none" }}>
-                <div className="apt-hc-left">
-                  <div className="apt-hc-score">{h.score ?? 0}%</div>
-                  <StatusBadge terminated={h.terminated} score={h.score} />
+            {filteredAndSortedHistory.map((h) => {
+              const type = h.assessment_type || "aptitude";
+              const scoreNum = Math.round(parseFloat(h.score) || 0);
+              const accuracyNum = Math.round(parseFloat(h.accuracy) || 0);
+              return (
+                <div key={h.id} className="apt-history-card" onClick={() => navigate(`/aptitude/results/${h.id}`)} style={{ cursor: "pointer" }}>
+                  <div className="apt-hc-left">
+                    <div className="apt-hc-score-wrapper">
+                      <svg width="44" height="44" viewBox="0 0 36 36" className="score-ring">
+                        <circle cx="18" cy="18" r="14" fill="none" stroke="rgba(255,255,255,0.03)" strokeWidth="3" />
+                        <circle
+                          cx="18"
+                          cy="18"
+                          r="14"
+                          fill="none"
+                          stroke={h.terminated ? "#f87171" : scoreNum >= 40 ? "#34d399" : "#fbbf24"}
+                          strokeWidth="3"
+                          strokeDasharray="88"
+                          strokeDashoffset={88 - (88 * Math.min(Math.max(scoreNum, 0), 100)) / 100}
+                          strokeLinecap="round"
+                          transform="rotate(-90 18 18)"
+                        />
+                      </svg>
+                      <span className="score-text-inner">{scoreNum}%</span>
+                    </div>
+                    <StatusBadge terminated={h.terminated} score={h.score} />
+                  </div>
+                  <div className="apt-hc-mid">
+                    <div className="apt-hc-meta-row">
+                      <span className={`apt-hc-module apt-hc-module-${type}`}>{MODULE_LABELS[type] || "Aptitude"}</span>
+                      <span className="apt-hc-difficulty-tag">{(h.difficulty || "medium").toUpperCase()}</span>
+                    </div>
+                    <div className="apt-hc-detail">{h.correct_count ?? 0} of {h.total_questions ?? 0} answers correct</div>
+                  </div>
+                  <div className="apt-hc-right">
+                    <div className="apt-hc-telemetry">
+                      <span className="apt-hc-accuracy">{accuracyNum}% accuracy</span>
+                      <span className="apt-hc-time"><TimeAgo date={h.created_at || h.completed_at} /></span>
+                    </div>
+                    <div className="apt-hc-chevron">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: '16px', height: '16px' }}>
+                        <polyline points="9 18 15 12 9 6" />
+                      </svg>
+                    </div>
+                  </div>
                 </div>
-                <div className="apt-hc-mid">
-                  <div className="apt-hc-difficulty">{(h.difficulty || "").charAt(0).toUpperCase() + (h.difficulty || "").slice(1)}</div>
-                  <div className="apt-hc-detail">{h.correct_count ?? 0}/{h.total_questions ?? 0} correct</div>
-                </div>
-                <div className="apt-hc-right">
-                  <span className="apt-hc-accuracy">{h.accuracy ?? 0}% acc</span>
-                  <span className="apt-hc-time"><TimeAgo date={h.created_at || h.completed_at} /></span>
-                </div>
-              </Link>
-            ))}
+              );
+            })}
           </motion.div>
         )}
 
-        <motion.div className="apt-start-btn-wrap" variants={item} style={{ marginTop: 32 }}>
+        <motion.div className="apt-start-btn-wrap" variants={item} style={{ marginTop: 32, textAlign: "center" }}>
           <Link to="/aptitude" className="apt-start-btn" style={{ textDecoration: "none", display: "inline-block" }}>
             Take Another Assessment
           </Link>

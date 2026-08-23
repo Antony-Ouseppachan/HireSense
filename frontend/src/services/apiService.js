@@ -210,30 +210,52 @@ export async function matchCandidate(payload) {
     });
 }
 
+export async function analyzeTextFluency(payload) {
+    return apiRequest("/nlp/analyze", {
+        method: "POST",
+        body: JSON.stringify(payload),
+    });
+}
+
+export async function analyzeResponsesFluency(responses) {
+    return apiRequest("/nlp/analyze", {
+        method: "POST",
+        body: JSON.stringify({ responses }),
+    });
+}
+
 // ─── Aptitude Assessment (Legacy) ───
 
-export async function getAptitudeHistory() {
-    return apiRequest("/aptitude/history");
+export async function getAptitudeHistory({ type, limit } = {}) {
+    const params = new URLSearchParams();
+    if (type) params.set("type", type);
+    if (limit) params.set("limit", limit);
+    const qs = params.toString();
+    return apiRequest(`/aptitude/history${qs ? `?${qs}` : ""}`);
 }
 
 export async function getAptitudeResult(id) {
     return apiRequest(`/aptitude/results/${id}`);
 }
 
-export async function getAptitudeRemarks() {
-    return apiRequest("/aptitude/remarks");
+export async function getAptitudeRemarks({ type } = {}) {
+    return apiRequest(`/aptitude/remarks${type ? `?type=${encodeURIComponent(type)}` : ""}`);
 }
 
 export async function getAptitudeRemarkDetail(id) {
     return apiRequest(`/aptitude/remarks/${id}`);
 }
 
+export async function getAptitudeReview(id) {
+    return apiRequest(`/aptitude/assessment/${id}/review`);
+}
+
 // ─── Aptitude V2 (Enterprise Assessment) ────────────────────────────
 
-export async function generateAssessment(profile, difficulty) {
+export async function generateAssessment(profile, difficulty, type = "aptitude") {
     return apiRequest("/aptitude/generate", {
         method: "POST",
-        body: JSON.stringify({ profile, difficulty }),
+        body: JSON.stringify({ profile, difficulty, type }),
     });
 }
 
@@ -277,4 +299,34 @@ export async function completeAssessment(id) {
 
 export async function cancelAssessment(id) {
     return apiRequest(`/aptitude/assessment/${id}/cancel`, { method: "POST" });
+}
+
+export async function reattemptAssessment(id) {
+    return apiRequest(`/aptitude/assessment/${id}/reattempt`, { method: "POST" });
+}
+
+// ─── English & Communication Assessment (reuses Aptitude endpoints) ───
+
+export async function generateEnglishAssessment(profile, difficulty) {
+    return generateAssessment(profile, difficulty, "english_communication");
+}
+
+export async function getEnglishHistory(params = {}) {
+    return getAptitudeHistory({ type: "english_communication", ...params });
+}
+
+export async function getEnglishResult(id) {
+    return getAptitudeResult(id);
+}
+
+export async function getEnglishReview(id) {
+    return getAptitudeReview(id);
+}
+
+// ─── Feature Request Bento Box Submission ─────────────────────────
+export async function submitFeatureRequest(payload) {
+    return apiRequest("/features", {
+        method: "POST",
+        body: JSON.stringify(payload),
+    });
 }
