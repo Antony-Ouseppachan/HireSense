@@ -8,7 +8,7 @@ import "../styles/Aptitude.css";
 const container = { hidden: {}, show: { transition: { staggerChildren: 0.05 } } };
 const item = { hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.16, 1, 0.3, 1] } } };
 
-const MODULE_LABELS = { aptitude: "Aptitude", general_knowledge: "General Knowledge" };
+const MODULE_LABELS = { aptitude: "Aptitude", general_knowledge: "General Knowledge", english_communication: "English & Communication" };
 
 function TimeAgo({ date }) {
   const d = new Date(date);
@@ -30,13 +30,12 @@ function StatusBadge({ terminated, score }) {
   return <span className="apt-status-badge apt-status-failed">Failed</span>;
 }
 
-export default function AptitudeHistory() {
+export default function EnglishHistory() {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   
   // Filtering & Sorting States
-  const [filter, setFilter] = useState("all");
   const [difficultyFilter, setDifficultyFilter] = useState("all");
   const [sortOption, setSortOption] = useState("latest");
 
@@ -48,7 +47,7 @@ export default function AptitudeHistory() {
       setLoading(true);
       setError(null);
       try {
-        const res = await getAptitudeHistory();
+        const res = await getAptitudeHistory({ type: "english_communication" });
         if (!cancelled) setHistory(res?.history || []);
       } catch {
         if (!cancelled) setError("Failed to load assessment history logs.");
@@ -73,10 +72,8 @@ export default function AptitudeHistory() {
   const filteredAndSortedHistory = useMemo(() => {
     let result = [...history];
 
-    // Apply category filter
-    if (filter !== "all") {
-      result = result.filter((h) => (h.assessment_type || "aptitude") === filter);
-    }
+    // Filter by english_communication only (already filtered from API, but ensure)
+    result = result.filter((h) => (h.assessment_type || "english_communication") === "english_communication");
 
     // Apply difficulty filter
     if (difficultyFilter !== "all") {
@@ -101,7 +98,7 @@ export default function AptitudeHistory() {
     });
 
     return result;
-  }, [history, filter, difficultyFilter, sortOption]);
+  }, [history, difficultyFilter, sortOption]);
 
   if (loading) {
     return (
@@ -117,12 +114,12 @@ export default function AptitudeHistory() {
     <motion.div className="apt-page" variants={container} initial="hidden" animate="show">
       <div className="apt-container">
         <motion.div className="apt-header" variants={item}>
-          <div className="apt-header-module" style={{ color: "#38bdf8", borderColor: "rgba(56,189,248,0.3)" }}>
-            <span className="apt-header-module-dot" style={{ backgroundColor: "#38bdf8" }} />
+          <div className="apt-header-module" style={{ color: "#fbbf24", borderColor: "rgba(251,191,36,0.3)" }}>
+            <span className="apt-header-module-dot" style={{ backgroundColor: "#fbbf24" }} />
             Telemetry Deck
           </div>
-          <h1>Assessment History</h1>
-          <p>Your past aptitude and general knowledge assessment results and performance metrics.</p>
+          <h1>English & Communication History</h1>
+          <p>Your past English & Communication assessment results and performance metrics.</p>
         </motion.div>
 
         {/* Telemetry Stats Deck */}
@@ -135,7 +132,7 @@ export default function AptitudeHistory() {
             </div>
             <div className="history-stat-card">
               <span className="stat-label">Avg Score</span>
-              <span className="stat-value" style={{ color: '#38bdf8' }}>{stats.avgScore}%</span>
+              <span className="stat-value" style={{ color: '#fbbf24' }}>{stats.avgScore}%</span>
               <span className="stat-sub">Performance index</span>
             </div>
             <div className="history-stat-card">
@@ -156,20 +153,6 @@ export default function AptitudeHistory() {
         {/* Dedicated Filters & Sort Control Row */}
         {!error && history.length > 0 && (
           <motion.div className="apt-history-controls" variants={item}>
-            <div className="control-group">
-              <label htmlFor="filter-type">Category</label>
-              <select
-                id="filter-type"
-                value={filter}
-                onChange={(e) => setFilter(e.target.value)}
-                className="control-select"
-              >
-                <option value="all">All Categories</option>
-                <option value="aptitude">Aptitude</option>
-                <option value="general_knowledge">General Knowledge</option>
-              </select>
-            </div>
-
             <div className="control-group">
               <label htmlFor="filter-difficulty">Difficulty</label>
               <select
@@ -205,21 +188,21 @@ export default function AptitudeHistory() {
         {error ? (
           <motion.div className="apt-error" variants={item}>
             <p>{error}</p>
-            <Link to="/aptitude" className="apt-retry-btn" style={{ textDecoration: "none", display: "inline-block", padding: "10px 24px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.12)", color: "var(--text-primary)" }}>Take a Test</Link>
+            <Link to="/english" className="apt-retry-btn" style={{ textDecoration: "none", display: "inline-block", padding: "10px 24px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.12)", color: "var(--text-primary)" }}>Take a Test</Link>
           </motion.div>
         ) : filteredAndSortedHistory.length === 0 ? (
           <motion.div className="apt-empty" variants={item} style={{ textAlign: "center", padding: 60, color: "var(--text-muted)" }}>
             <p>No assessment records registered on this filter.</p>
-            <Link to="/aptitude" className="apt-retry-btn" style={{ textDecoration: "none", display: "inline-block", marginTop: 16, padding: "10px 24px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.12)", color: "var(--text-primary)" }}>Start Your First Test</Link>
+            <Link to="/english" className="apt-retry-btn" style={{ textDecoration: "none", display: "inline-block", marginTop: 16, padding: "10px 24px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.12)", color: "var(--text-primary)" }}>Start Your First Test</Link>
           </motion.div>
         ) : (
           <motion.div className="apt-history-list" variants={item}>
             {filteredAndSortedHistory.map((h) => {
-              const type = h.assessment_type || "aptitude";
+              const type = h.assessment_type || "english_communication";
               const scoreNum = Math.round(parseFloat(h.score) || 0);
               const accuracyNum = Math.round(parseFloat(h.accuracy) || 0);
               return (
-                <div key={h.id} className="apt-history-card" onClick={() => navigate(`/aptitude/results/${h.id}`)} style={{ cursor: "pointer" }}>
+                <div key={h.id} className="apt-history-card" onClick={() => navigate(`/english/results/${h.id}`)} style={{ cursor: "pointer" }}>
                   <div className="apt-hc-left">
                     <div className="apt-hc-score-wrapper">
                       <svg width="44" height="44" viewBox="0 0 36 36" className="score-ring">
@@ -243,7 +226,7 @@ export default function AptitudeHistory() {
                   </div>
                   <div className="apt-hc-mid">
                     <div className="apt-hc-meta-row">
-                      <span className={`apt-hc-module apt-hc-module-${type}`}>{MODULE_LABELS[type] || "Aptitude"}</span>
+                      <span className={`apt-hc-module apt-hc-module-${type}`}>{MODULE_LABELS[type] || "English"}</span>
                       <span className="apt-hc-difficulty-tag">{(h.difficulty || "medium").toUpperCase()}</span>
                     </div>
                     <div className="apt-hc-detail">{h.correct_count ?? 0} of {h.total_questions ?? 0} answers correct</div>
@@ -266,7 +249,7 @@ export default function AptitudeHistory() {
         )}
 
         <motion.div className="apt-start-btn-wrap" variants={item} style={{ marginTop: 32, textAlign: "center" }}>
-          <Link to="/aptitude" className="apt-start-btn" style={{ textDecoration: "none", display: "inline-block" }}>
+          <Link to="/english" className="apt-start-btn" style={{ textDecoration: "none", display: "inline-block" }}>
             Take Another Assessment
           </Link>
         </motion.div>

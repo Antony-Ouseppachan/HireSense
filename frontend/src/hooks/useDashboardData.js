@@ -3,11 +3,15 @@ import { useAuth } from "../context/AuthContext";
 import { getProfile, getInterviews, getAuthenticatedUser, getAptitudeRemarks } from "../services/apiService";
 
 function getGreeting() {
-  const h = new Date().getHours();
-  if (h < 12) return "Good Morning";
-  if (h < 17) return "Good Afternoon";
-  if (h < 21) return "Good Evening";
-  return "Good Night";
+  const greetings = [
+    "Ready to conquer the universe",
+    "Let's make some stellar progress",
+    "Another day, another breakthrough",
+    "Houston, we have a genius",
+    "Time to ignite the rockets",
+    "Suit up, captain"
+  ];
+  return greetings[Math.floor(Math.random() * greetings.length)];
 }
 
 function getDisplayName(user, profile) {
@@ -110,6 +114,7 @@ function computeHealth(profile, backendUser) {
     storageLimit: 50,
     subscription: "Free",
     emailVerified: !!backendUser?.is_verified,
+    integrityScore: profile?.integrity_score ?? 100,
   };
 }
 

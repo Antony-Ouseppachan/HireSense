@@ -5,7 +5,7 @@
  * only the failing question (not the entire batch).
  */
 
-const VALID_TYPES = new Set(["mcq", "multiple", "numerical", "boolean", "comprehension"]);
+const VALID_TYPES = new Set(["mcq", "multiple", "numerical", "boolean", "comprehension", "descriptive", "situational", "professional"]);
 const VALID_DIFFICULTIES = new Set(["easy", "medium", "hard"]);
 
 /**
@@ -14,17 +14,21 @@ const VALID_DIFFICULTIES = new Set(["easy", "medium", "hard"]);
  * @param {object} q - The question object from the LLM
  * @param {number} questionNumber - 1-based question number in the assessment
  * @param {string} expectedDifficulty - "easy" | "medium" | "hard"
+ * @param {object} [opts]
+ * @param {number} [opts.minExplanationLength=1] - Minimum explanation length in chars
  * @returns {{ valid: boolean, errors: string[] }}
  */
-function validateQuestion(q, questionNumber, expectedDifficulty) {
+function validateQuestion(q, questionNumber, expectedDifficulty, opts = {}) {
   const errors = [];
+  const minExplanationLength = opts.minExplanationLength ?? 1;
 
   if (!q || typeof q !== "object") {
     return { valid: false, errors: ["Question is null or not an object"] };
   }
 
   // ── Required fields ──────────────────────────────────────────────────
-  const required = ["type", "question", "correctAnswer", "topic", "difficulty"];
+  const isDescriptive = ["descriptive", "situational", "professional"].includes(q.type);
+  const required = isDescriptive ? ["type", "question", "topic", "difficulty"] : ["type", "question", "correctAnswer", "topic", "difficulty"];
   for (const field of required) {
     if (q[field] == null || (typeof q[field] === "string" && q[field].trim() === "")) {
       errors.push(`Missing or empty required field: "${field}"`);
@@ -44,7 +48,12 @@ function validateQuestion(q, questionNumber, expectedDifficulty) {
   }
 
   // ── Options validation by type ────────────────────────────────────────
-  if (q.type === "mcq") {
+  if (["descriptive", "situational", "professional"].includes(q.type)) {
+    // Open-ended: no options/correctAnswer validation; rubric optional
+    if (q.options && Array.isArray(q.options) && q.options.length > 0) {
+      // Allow but warn if options provided for descriptive
+    }
+  } else if (q.type === "mcq") {
     if (!Array.isArray(q.options) || q.options.length !== 4) {
       errors.push("mcq questions must have exactly 4 options");
     } else {
@@ -103,8 +112,8 @@ function validateQuestion(q, questionNumber, expectedDifficulty) {
   if (q.solution != null && (typeof q.solution !== "string" || q.solution.trim().length < 1)) {
     errors.push("solution must be a non-empty string");
   }
-  if (q.explanation != null && (typeof q.explanation !== "string" || q.explanation.trim().length < 1)) {
-    errors.push("explanation must be a non-empty string");
+  if (q.explanation != null && (typeof q.explanation !== "string" || q.explanation.trim().length < minExplanationLength)) {
+    errors.push(`explanation must be a non-empty string of at least ${minExplanationLength} characters`);
   }
 
   // ── Passage for comprehension type ───────────────────────────────────

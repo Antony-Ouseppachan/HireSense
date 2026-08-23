@@ -44,19 +44,6 @@ const CATEGORY_CONFIG = {
       "Master placement aptitude tests with questions covering quantitative aptitude, logical reasoning, verbal ability, data interpretation, and analytical reasoning.",
   },
 
-  gk: {
-    title: "General Knowledge",
-    icon: "globe",
-    color: "#34d399",
-    description:
-      "Test your knowledge of current affairs, science, technology, and business.",
-    difficulties: ["Beginner", "Intermediate", "Advanced"],
-    durations: [10, 20, 30],
-    modes: ["Practice", "Timed Exam"],
-    longDesc:
-      "Stay ahead with questions on current affairs, science, technology, computer basics, business, and geography.",
-  },
-
   english: {
     title: "English & Communication",
     icon: "message",
@@ -387,7 +374,7 @@ function InterviewCategory() {
         <div className="cat-header-section">
           <button
             className="cat-back-btn"
-            onClick={() => navigate("/studio")}
+            onClick={() => navigate("/interviews")}
           >
             <IconArrowLeft size={16} color="#94a3b8" />
             Back to Studio

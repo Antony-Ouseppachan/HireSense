@@ -124,10 +124,10 @@ function Register() {
           if (index === statuses.length - 1) {
             setTimeout(() => {
               navigate("/dashboard");
-            }, 800);
+            }, 450);
           }
         }, delay);
-        delay += 600; // 0.6 seconds per step
+        delay += 350; // 0.35 seconds per step
       });
 
     } catch (err) {
@@ -169,10 +169,10 @@ function Register() {
           if (index === statuses.length - 1) {
             setTimeout(() => {
               navigate("/dashboard");
-            }, 800);
+            }, 450);
           }
         }, delay);
-        delay += 600; // 0.6 seconds per step
+        delay += 350; // 0.35 seconds per step
       });
 
     } catch (err) {

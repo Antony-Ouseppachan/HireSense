@@ -293,4 +293,5 @@ function inferNextSuggestedTest(weakTopics, strongTopics) {
   return strongTopics?.length >= 3 ? "Advance to Hard Difficulty" : "Full Mock Aptitude Test";
 }
 
-module.exports = { evaluate, estimatePercentile, getGrade, arraysEqual, parseAnswer, isAnswerEmpty };
+module.exports = { evaluate, estimatePercentile, getGrade, arraysEqual, 
+parseAnswer, isAnswerEmpty, isCorrect };

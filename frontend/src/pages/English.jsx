@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "../context/AuthContext";
 import { getProfile, generateAssessment, getAssessmentStatus } from "../services/apiService";
@@ -8,71 +8,37 @@ import "../styles/Aptitude.css";
 
 /* ─── Module meta ──────────────────────────────────────────────────── */
 
-const APTITUDE_DIFFICULTIES = [
-  { id: "easy", label: "Easy", badge: "Beginner", color: "#4ADE80", title: "Campus Placement", questions: 20, minutes: 20, timePerQ: "~1 min/question", desc: "Perfect for beginners preparing for campus recruitment drives.", topics: ["Percentages", "Time & Work", "Coding-Decoding", "Basic Reasoning"], stars: 2, companies: "Infosys · Capgemini · Wipro · Cognizant" },
-  { id: "medium", label: "Medium", badge: "Intermediate", color: "#FBBF24", title: "Industry Standard", questions: 25, minutes: 35, timePerQ: "~1-2 min/question", desc: "Designed for Amazon, Oracle, Deloitte, Cisco and similar company hiring.", topics: ["Quantitative Aptitude", "Logical Reasoning", "Data Interpretation", "Analytical Reasoning"], stars: 3, companies: "Amazon · Accenture · Deloitte · Oracle · TCS Digital · Cisco" },
-  { id: "hard", label: "Hard", badge: "Advanced", color: "#F87171", title: "Top Product Companies", questions: 30, minutes: 50, timePerQ: "~2-5 min/question", desc: "Designed for Microsoft, Google, NVIDIA, Adobe and product-based companies.", topics: ["Advanced Quant", "Complex Reasoning", "Case Studies", "Pattern Analysis"], stars: 5, companies: "Google · Microsoft · Adobe · Atlassian · Goldman Sachs · NVIDIA" },
-];
-
-const GK_DIFFICULTIES = [
-  { id: "easy", label: "Easy", badge: "Basic Awareness", color: "#4ADE80", title: "Foundations", questions: 20, minutes: 15, timePerQ: "~30-45s/question", desc: "Basic but meaningful general awareness across everyday subjects.", topics: ["Common Science", "Basic Geography", "Major Organizations", "Basic Economics"], stars: 2, companies: "School Exams · SSC · RRB · NTPC" },
-  { id: "medium", label: "Medium", badge: "Placement Level", color: "#FBBF24", title: "Competitive Standard", questions: 25, minutes: 20, timePerQ: "~40-45s/question", desc: "Placement-test level general knowledge requiring recall with conceptual understanding.", topics: ["Institutions", "Science & Tech", "Economy", "Geography"], stars: 3, companies: "SSC CGL · IBPS · MNC Placement · State PSC" },
-  { id: "hard", label: "Hard", badge: "Advanced", color: "#F87171", title: "Strong Competitive", questions: 30, minutes: 30, timePerQ: "~50-60s/question", desc: "Deep, cross-domain general knowledge with highly plausible distractors.", topics: ["Current Affairs", "Computing/IT", "Space & Environment", "Corporate Awareness"], stars: 5, companies: "UPSC · IIM Interviews · Air Force · NDA" },
+const ENGLISH_DIFFICULTIES = [
+  { id: "easy", label: "Easy", badge: "Foundational", color: "#4ADE80", title: "Foundations", questions: 20, minutes: 20, timePerQ: "~1 min/question", desc: "Foundational grammar, vocabulary and comprehension for workplace readiness.", topics: ["Grammar", "Vocabulary", "Comprehension", "Sentence", "Situational", "Professional"], stars: 2, companies: "Campus · SSC · Service" },
+  { id: "medium", label: "Medium", badge: "Professional", color: "#FBBF24", title: "Workplace Standard", questions: 25, minutes: 30, timePerQ: "~1-1.5 min/question", desc: "Workplace communication standard with situational and professional tone evaluation.", topics: ["Grammar", "Vocabulary", "Comprehension", "Sentence", "Situational", "Professional"], stars: 3, companies: "Deloitte · Accenture · Cognizant · Infosys" },
+  { id: "hard", label: "Hard", badge: "Advanced", color: "#F87171", title: "Executive Level", questions: 30, minutes: 40, timePerQ: "~1.5-2 min/question", desc: "Advanced business communication with nuanced coherence and conciseness demands.", topics: ["Grammar", "Vocabulary", "Comprehension", "Sentence", "Situational", "Professional"], stars: 5, companies: "McKinsey · Google · Microsoft · Goldman Sachs" },
 ];
 
 const MODULES = {
-  aptitude: {
-    key: "aptitude",
-    label: "AI Aptitude Assessment",
-    short: "Aptitude",
-    accent: "#38bdf8",
-    tagline: "Placement-level reasoning, quantitative and logical aptitude generated specifically for your profile.",
-    icon: "brain",
-    difficulties: APTITUDE_DIFFICULTIES,
+  english_communication: {
+    key: "english_communication",
+    label: "English & Communication Assessment",
+    short: "English",
+    accent: "#fbbf24",
+    tagline: "Professional English proficiency and workplace communication — evaluated by hybrid AI.",
+    icon: "message",
+    difficulties: ENGLISH_DIFFICULTIES,
     instructions: [
-      { icon: "brain", title: "Reasoning First", desc: "Every question evaluates reasoning and analytical ability rather than memorization.", highlights: ["Logical puzzles", "Data sufficiency", "Critical thinking"] },
-      { icon: "clock", title: "Timed Assessment", desc: "Complete within the allocated time. Every question contributes equally to your score.", highlights: ["Per-question tracking", "Auto-submit", "Real-time progress"] },
-      { icon: "shield", title: "AI Proctored", desc: "Full session integrity monitoring with real-time violation detection and logging.", highlights: ["Tab monitoring", "Fullscreen lock", "Fraud detection"] },
-      { icon: "bar-chart", title: "Detailed Report", desc: "Comprehensive performance analysis with AI feedback and improvement recommendations.", highlights: ["Topic analysis", "AI feedback", "Weakness detection"] },
-    ],
-    terms: [
-      { title: "Assessment Rules", content: "You must complete the assessment within the allotted time. Answers are auto-saved. Closing the browser will resume from where you left off." },
-      { title: "Academic Integrity", content: "Any attempt to switch tabs, open external applications, copy/paste content, or use unauthorized resources will be logged. Three or more violations will result in automatic disqualification." },
-      { title: "Fullscreen Requirement", content: "The assessment must be taken in fullscreen mode. Exiting fullscreen will be recorded as a violation. You must re-enter fullscreen to continue." },
-      { title: "Scoring", content: "Correct answers earn marks. There is no negative marking for incorrect answers. Skipped questions receive zero marks." },
-      { title: "AI Evaluation", content: "Your performance is evaluated by an AI system that analyzes topic-wise strengths and weaknesses, providing personalized feedback and recommendations." },
-      { title: "Question Bank", content: "Questions are pre-generated before the test starts. The LLM is never called during the test for zero latency." },
-      { title: "No Trivia", content: "All questions are placement-oriented. No general knowledge, history, or school-level questions appear." },
-      { title: "Company Benchmarking", content: "Medium-level questions match Amazon, Deloitte, Oracle, TCS Digital. Hard-level questions match Google, Microsoft, Goldman Sachs." },
-      { title: "Profile Adaptation", content: "Questions are tailored to your degree, target role, skills, and weak areas for personalized preparation." },
-      { title: "Fraud Detection", content: "Mouse leave events, keyboard shortcuts, right-click, and developer tools are monitored in real time." },
-    ],
-  },
-  general_knowledge: {
-    key: "general_knowledge",
-    label: "General Knowledge Assessment",
-    short: "General Knowledge",
-    accent: "#34d399",
-    tagline: "Competitive placement-level general knowledge across current affairs, science, economics, business, geography and more — generated fresh by AI.",
-    icon: "globe",
-    difficulties: GK_DIFFICULTIES,
-    instructions: [
-      { icon: "globe", title: "Knowledge-Driven", desc: "Every question tests established, verifiable knowledge — not trivia guessing. Difficulty genuinely matches the level you select.", highlights: ["Exact facts", "One clear answer", "Cross-domain"] },
-      { icon: "clock", title: "Fast-Paced Assessment", desc: "Shorter per-question timings that mirror competitive exams. Every question counts equally to your score.", highlights: ["Quick-fire rounds", "Auto-submit", "Real-time progress"] },
-      { icon: "shield", title: "AI Proctored", desc: "The same full session integrity monitoring with real-time violation detection and logging.", highlights: ["Tab monitoring", "Fullscreen lock", "Fraud detection"] },
-      { icon: "bar-chart", title: "Detailed Report", desc: "Comprehensive category-wise analysis with AI feedback and a personalized study roadmap.", highlights: ["Category analysis", "AI feedback", "Weakness detection"] },
-    ],
-    terms: [
-      { title: "Assessment Rules", content: "You must complete the assessment within the allotted time. Answers are auto-saved. Closing the browser will resume from where you left off." },
-      { title: "Academic Integrity", content: "Any attempt to switch tabs, open external applications, copy/paste content, or use unauthorized resources will be logged. Three or more violations will result in automatic disqualification." },
-      { title: "Fullscreen Requirement", content: "The assessment must be taken in fullscreen mode. Exiting fullscreen will be recorded as a violation. You must re-enter fullscreen to continue." },
-      { title: "Scoring", content: "Correct answers earn marks. There is no negative marking for incorrect answers. Skipped questions receive zero marks." },
-      { title: "Factual Content", content: "All questions are based on stable, verifiable facts. Political persuasion, opinions, and volatile current events are excluded." },
-      { title: "AI Evaluation", content: "Your performance is evaluated by an AI system that analyzes category-wise strengths and weaknesses and suggests a study roadmap." },
-      { title: "Question Bank", content: "Questions are pre-generated one at a time before the test starts. The LLM is never called during the test for zero latency." },
-      { title: "Difficulty Calibration", content: "Easy covers basic awareness. Medium is placement-test level with plausible distractors. Hard is strong competitive level combining multiple facts." },
-      { title: "Fraud Detection", content: "Mouse leave events, keyboard shortcuts, right-click, and developer tools are monitored in real time." },
-    ],
+    { icon: "book", title: "Language Precision", desc: "Every question evaluates grammar, vocabulary and comprehension with an emphasis on coherence and conciseness.", highlights: ["Grammar", "Vocabulary", "Comprehension"] },
+    { icon: "message", title: "Professional Communication", desc: "Situational and workplace scenarios evaluate professionalism, tone, coherence and clarity.", highlights: ["Professionalism", "Coherence", "Conciseness"] },
+    { icon: "shield", title: "AI Proctored", desc: "Full session integrity monitoring with real-time violation detection and logging.", highlights: ["Tab monitoring", "Fullscreen lock", "Fraud detection"] },
+    { icon: "bar-chart", title: "Detailed Report", desc: "Comprehensive performance analysis with AI feedback and improvement recommendations.", highlights: ["Topic analysis", "AI feedback", "Weakness detection"] },
+  ],
+  terms: [
+    { title: "Assessment Rules", content: "You must complete the assessment within the allotted time. Answers are auto-saved. Closing the browser will resume from where you left off." },
+    { title: "Academic Integrity", content: "Any attempt to switch tabs, open external applications, copy/paste content, or use unauthorized resources will be logged. Three or more violations will result in automatic disqualification." },
+    { title: "Fullscreen Requirement", content: "The assessment must be taken in fullscreen mode. Exiting fullscreen will be recorded as a violation. You must re-enter fullscreen to continue." },
+    { title: "Scoring", content: "Correct answers earn marks. Descriptive and situational answers are scored by hybrid AI on relevance, grammar, vocabulary, coherence, professionalism and conciseness. Skipped questions receive zero marks." },
+    { title: "AI Evaluation", content: "Your performance is evaluated by an AI system that analyzes grammar, vocabulary, relevance, coherence and professionalism, providing personalized feedback and recommendations." },
+    { title: "Question Bank", content: "Questions are pre-generated before the test starts. The LLM is never called during the test for zero latency." },
+    { title: "Professional Tone", content: "Situational and professional questions require concise, coherent and workplace-appropriate responses. Verbosity without clarity is penalized." },
+    { title: "Fraud Detection", content: "Mouse leave events, keyboard shortcuts, right-click, and developer tools are monitored in real time." },
+  ],
   },
 };
 
@@ -111,7 +77,12 @@ function TermsModal({ open, onClose, terms, accent }) {
             className={`apt-tnc-agree ${accepted ? "checked" : ""}`}
             style={{ "--apt-accent": accent, "--apt-accent-30": `${accent}4D`, "--apt-accent-50": `${accent}80` }}
           >
-            <input type="checkbox" className="apt-agree-input" checked={accepted} onChange={(e) => setAccepted(e.target.checked)} />
+            <input
+              type="checkbox"
+              className="apt-agree-input"
+              checked={accepted}
+              onChange={(e) => setAccepted(e.target.checked)}
+            />
             <span className="apt-agree-box" aria-hidden="true">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
             </span>
@@ -133,19 +104,19 @@ function FeatureIcon({ name }) {
   if (name === "clock") return <><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></>;
   if (name === "shield") return <><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></>;
   if (name === "bar-chart") return <><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></>;
+  if (name === "book") return <><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><path d="M8 7h8"/><path d="M8 11h8"/></>;
+  if (name === "message") return <><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></>;
   return null;
 }
 
 const container = { hidden: {}, show: { transition: { staggerChildren: 0.06 } } };
 const item = { hidden: { opacity: 0, y: 24 }, show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.16, 1, 0.3, 1] } } };
 
-export default function Aptitude() {
+export default function English() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
   const { user } = useAuth();
-  const [moduleKey] = useState(() =>
-    searchParams.get("type") === "general_knowledge" ? "general_knowledge" : "aptitude"
-  );
+  const module = MODULES.english_communication;
+  const accent = module.accent;
   const [agreed, setAgreed] = useState(false);
   const [selected, setSelected] = useState("medium");
   const [profile, setProfile] = useState(null);
@@ -161,8 +132,6 @@ export default function Aptitude() {
   const [genError, setGenError] = useState(null);
   const pollRef = useRef(null);
 
-  const module = MODULES[moduleKey] || MODULES.aptitude;
-  const accent = module.accent;
   const diff = module.difficulties.find((d) => d.id === selected) || module.difficulties[1];
   const canGenerate = agreed && selected && !profileLoading && !generating;
 
@@ -189,7 +158,7 @@ export default function Aptitude() {
     setGenError(null);
 
     try {
-      const res = await generateAssessment(profile, selected, moduleKey);
+      const res = await generateAssessment(profile, selected, "english_communication");
       const id = res?.assessmentId;
       if (!id) throw new Error("No assessment ID returned");
       setAssessmentId(id);
@@ -224,7 +193,7 @@ export default function Aptitude() {
 
   const handleStart = () => {
     if (genStatus !== "ready" || !assessmentId) return;
-    navigate(`/aptitude/test?id=${assessmentId}`);
+    navigate(`/english/test?id=${assessmentId}`);
   };
 
   const handleRetry = () => {
@@ -399,9 +368,7 @@ export default function Aptitude() {
                 Generating {module.short.toLowerCase()} questions... {genProgress}/{genTotal} ({progressPct}%)
               </p>
               <p className="apt-gen-progress-sub">
-                {moduleKey === "general_knowledge"
-                  ? "Questions are being generated one at a time. This keeps generation fast and resilient."
-                  : "Questions are being created in batches of 5. This usually takes 30-60 seconds."}
+                Questions are being generated one at a time. This keeps generation fast and resilient.
               </p>
             </div>
           )}

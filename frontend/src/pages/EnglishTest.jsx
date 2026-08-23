@@ -16,9 +16,10 @@ import "../styles/Aptitude.css";
 const TYPE_TIME_MAP = {
   aptitude: { easy: 1200, medium: 2100, hard: 3000 },
   general_knowledge: { easy: 1200, medium: 1500, hard: 2100 },
+  english_communication: { easy: 1200, medium: 1800, hard: 2400 },
 };
 
-const MODULE_LABELS = { aptitude: "Aptitude", general_knowledge: "General Knowledge" };
+const MODULE_LABELS = { aptitude: "Aptitude", general_knowledge: "General Knowledge", english_communication: "English" };
 
 const PROCTOR_OVERLAY_MS = 1500;
 
@@ -63,7 +64,7 @@ function StepIndicator({ steps, currentKey, error }) {
   );
 }
 
-export default function AptitudeTest() {
+export default function EnglishTest() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const assessmentId = searchParams.get("id");
@@ -83,8 +84,8 @@ export default function AptitudeTest() {
   const [terminated, setTerminated] = useState(false);
   const [terminationReason, setTerminationReason] = useState("");
   const [difficulty, setDifficulty] = useState("medium");
-  const [type, setType] = useState("aptitude");
-  const [maxTime, setMaxTime] = useState(TYPE_TIME_MAP.aptitude.medium);
+  const [type, setType] = useState("english_communication");
+  const [maxTime, setMaxTime] = useState(TYPE_TIME_MAP.english_communication.medium);
   const [loadingStep, setLoadingStep] = useState(null);
   const [loadingError, setLoadingError] = useState(null);
   const [fullscreenDenied, setFullscreenDenied] = useState(false);
@@ -145,10 +146,10 @@ export default function AptitudeTest() {
         if (qs.length === 0) throw new Error("No questions available.");
 
         const diff = res?.difficulty || "medium";
-        const testType = res?.type || "aptitude";
+        const testType = res?.type || "english_communication";
         setDifficulty(diff);
         setType(testType);
-        const timeLimit = (TYPE_TIME_MAP[testType] || TYPE_TIME_MAP.aptitude)[diff] || TYPE_TIME_MAP.aptitude.medium;
+        const timeLimit = (TYPE_TIME_MAP[testType] || TYPE_TIME_MAP.english_communication)[diff] || TYPE_TIME_MAP.english_communication.medium;
         setMaxTime(timeLimit);
         timerRef.current = timeLimit;
 
@@ -262,14 +263,32 @@ export default function AptitudeTest() {
   }, [syncAnswersToServer]);
 
   // ── Anti-cheat ─────────────────────────────────────────────────────────
+  const restoreFullscreen = useCallback(async () => {
+    pendingFullscreenRef.current = true;
+    let fsOk = false;
+    try {
+      fsOk = await requestFullscreen();
+      if (!fsOk) {
+        // Browser blocked fullscreen - try again after a brief delay
+        await new Promise(r => setTimeout(r, 500));
+        fsOk = await requestFullscreen();
+      }
+    } catch (e) {
+      console.error("Fullscreen restore failed:", e);
+    } finally {
+      // Only clear ref after successful attempt
+      pendingFullscreenRef.current = !fsOk;
+    }
+    return fsOk;
+  }, [requestFullscreen]);
+
   const onViolation = useCallback((violation, count) => {
     warningViolationRef.current = violation;
 
     if (violation.type === "fullscreen-exit") {
-      pendingFullscreenRef.current = true;
-      // Attempt to restore fullscreen automatically
-      requestFullscreen().then((fsOk) => {
-        if (!fsOk) pendingFullscreenRef.current = true;
+      // Attempt to restore fullscreen automatically when violation detected
+      restoreFullscreen().catch(() => {
+        // If auto-restore fails, will be re-attempted on warning dismiss
       });
     }
 
@@ -291,7 +310,7 @@ export default function AptitudeTest() {
       setShowWarning(count);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [assessmentId, current]);
+  }, [assessmentId, current, restoreFullscreen]);
 
   const { warnings } = useAntiCheat({
     onViolation,
@@ -301,16 +320,15 @@ export default function AptitudeTest() {
   });
 
   const handleDismissWarning = useCallback(async () => {
-    if (pendingFullscreenRef.current) {
-      const fsOk = await requestFullscreen();
-      if (!fsOk) {
-        setFullscreenDenied(true);
-        return;
-      }
-      pendingFullscreenRef.current = false;
+    // Always attempt to restore fullscreen when user returns from warning
+    const fsOk = await restoreFullscreen();
+    if (!fsOk) {
+      // Keep the exam blocked until fullscreen is restored.
+      setFullscreenDenied(true);
+      return;
     }
     setShowWarning(null);
-  }, [requestFullscreen]);
+  }, [restoreFullscreen]);
 
   const handleAnswer = useCallback((index, value) => {
     setAnswers((prev) => ({ ...prev, [index]: value }));
@@ -369,13 +387,13 @@ export default function AptitudeTest() {
       const id = res?.id || assessmentId;
       sessionStorage.removeItem(`apt_remaining_${assessmentId}`);
       await holdOverlay();
-      navigate(`/aptitude/results/${id}`, {
+      navigate(`/english/results/${id}`, {
         replace: true,
         state: { result: res?.result || res, difficulty, terminated: isTerminated },
       });
     } catch {
       await holdOverlay();
-      navigate("/aptitude", { replace: true });
+      navigate("/english", { replace: true });
     } finally {
       setSubmitting(false);
     }
@@ -414,7 +432,7 @@ export default function AptitudeTest() {
                 <path d="M14 20l4 4 8-8" stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </div>
-            <h2 className="apt-loading-title">Preparing Your {MODULE_LABELS[type] || "Aptitude"} Assessment</h2>
+            <h2 className="apt-loading-title">Preparing Your {MODULE_LABELS[type] || "English"} Assessment</h2>
             <StepIndicator steps={STEPS} currentKey={loadingStep} error={loadingError} />
             {loadingError && (
               <button className="apt-loading-retry-btn" onClick={() => window.location.reload()}>
@@ -455,7 +473,7 @@ export default function AptitudeTest() {
     <div className="apt-page"><div className="apt-container"><div className="apt-error">
       <svg className="apt-error-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/></svg>
       <h3>Failed to load assessment</h3><p>{error}</p>
-      <button className="apt-retry-btn" onClick={() => navigate(`/aptitude/test?id=${assessmentId}`, { replace: true })}>Try Again</button>
+      <button className="apt-retry-btn" onClick={() => navigate(`/english/test?id=${assessmentId}`, { replace: true })}>Try Again</button>
     </div></div></div>);
 
   if (terminated) {
@@ -480,7 +498,7 @@ export default function AptitudeTest() {
       {/* Top Bar */}
       <div className="apt-topbar">
         <div className="apt-topbar-left">
-          <span className={`apt-test-module apt-test-module-${type}`}>{MODULE_LABELS[type] || "Aptitude"}</span>
+          <span className={`apt-test-module apt-test-module-${type}`}>{MODULE_LABELS[type] || "English"}</span>
           <LiveTimer initialSeconds={timerRef.current} onTimeUp={handleTimeUp} running={started && !submitting} />
           <div className="apt-topbar-progress">
             <span className="apt-progress-text">Q{current + 1}/{questions.length}</span>
@@ -778,6 +796,36 @@ function QuestionRenderer({ question, index, answers, onAnswer }) {
             </div>
           );
         })}
+      </div>
+    );
+  }
+
+  // Descriptive / situational / professional / text types -> textarea with 2000 char limit
+  const descriptiveTypes = ["descriptive", "situational", "professional", "long_answer", "text", "essay"];
+  if (descriptiveTypes.includes((question.type || "").toLowerCase())) {
+    const textVal = typeof val === "string" ? val : (val != null ? String(val) : "");
+    const charCount = textVal.length;
+    const wordCount = textVal.trim() ? textVal.trim().split(/\s+/).filter(Boolean).length : 0;
+    const maxChars = 2000;
+    return (
+      <div className="apt-descriptive-wrap">
+        <textarea
+          className="apt-descriptive-input"
+          value={textVal}
+          onChange={(e) => {
+            let v = e.target.value;
+            if (v.length > maxChars) v = v.slice(0, maxChars);
+            onAnswer(index, v);
+          }}
+          maxLength={maxChars}
+          rows={6}
+          placeholder={question.placeholder || "Write your response here. Be coherent, concise and professional."}
+          style={{ width: "100%", padding: "14px 16px", borderRadius: 12, border: "1px solid var(--border-color)", background: "rgba(255,255,255,0.02)", color: "var(--text-primary)", fontSize: 14, fontFamily: "inherit", resize: "vertical", minHeight: 120, outline: "none" }}
+        />
+        <div className="apt-descriptive-meta" style={{ display: "flex", justifyContent: "space-between", marginTop: 8, fontSize: 11, color: "var(--text-muted)" }}>
+          <span>{wordCount} words</span>
+          <span>{charCount}/{maxChars} characters</span>
+        </div>
       </div>
     );
   }

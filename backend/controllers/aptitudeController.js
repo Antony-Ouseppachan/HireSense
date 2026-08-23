@@ -1,8 +1,12 @@
 const db = require("../config/database");
 const { askAI } = require("../services/ai");
 const { generateQuestionsForAssessment } = require("../services/questionGenerator");
+const { isCorrect: isAnswerCorrect, parseAnswer, isAnswerEmpty } = require("../services/evaluationEngine");
+const { evaluateEnglishAssessment } = require("../services/englishEvaluationService");
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
+
+const ASSESSMENT_TYPES = new Set(["aptitude", "general_knowledge", "english_communication"]);
 
 async function resolveUserId(firebaseUid) {
   const result = await db.query("SELECT id FROM users WHERE firebase_uid = $1", [firebaseUid]);
@@ -58,23 +62,24 @@ async function generate(req, res) {
     const userId = await resolveUserId(req.user.uid);
     if (!userId) return res.status(404).json({ message: "User not found." });
 
-    const { profile, difficulty } = req.body;
+    const { profile, difficulty, type } = req.body;
+    const assessmentType = ASSESSMENT_TYPES.has(type) ? type : "aptitude";
     const totalQuestions = QUESTION_COUNTS[difficulty] || 25;
 
     // Create assessment record
     const assessResult = await db.query(
       `INSERT INTO aptitude_assessments
-         (user_id, difficulty, total_questions, status, questions_generated, created_at, updated_at)
-       VALUES ($1, $2, $3, 'generating', 0, NOW(), NOW())
+         (user_id, difficulty, total_questions, status, assessment_type, questions_generated, created_at, updated_at)
+       VALUES ($1, $2, $3, 'generating', $4, 0, NOW(), NOW())
        RETURNING id`,
-      [userId, difficulty, totalQuestions]
+      [userId, difficulty, totalQuestions, assessmentType]
     );
     const assessmentId = assessResult.rows[0].id;
 
     // Start background generation (non-blocking)
-    generateQuestionsForAssessment(assessmentId, profile, difficulty, totalQuestions);
+    generateQuestionsForAssessment(assessmentId, profile, difficulty, totalQuestions, assessmentType);
 
-    res.status(201).json({ success: true, assessmentId });
+    res.status(201).json({ success: true, assessmentId, type: assessmentType });
   } catch (error) {
     console.error("Generate assessment error:", error.message);
     res.status(500).json({ success: false, message: "Failed to create assessment." });
@@ -147,6 +152,7 @@ async function getAssessment(req, res) {
       success: true,
       assessment: {
         id: assessment.id,
+        type: assessment.assessment_type || "aptitude",
         difficulty: assessment.difficulty,
         status: assessment.status,
         totalQuestions: assessment.total_questions,
@@ -207,7 +213,7 @@ async function start(req, res) {
     const { id } = req.params;
 
     const assessResult = await db.query(
-      `SELECT status, total_questions, difficulty FROM aptitude_assessments WHERE id = $1 AND user_id = $2`,
+      `SELECT status, total_questions, difficulty, assessment_type FROM aptitude_assessments WHERE id = $1 AND user_id = $2`,
       [id, userId]
     );
     if (assessResult.rows.length === 0) return res.status(404).json({ message: "Assessment not found." });
@@ -237,6 +243,8 @@ async function start(req, res) {
     res.json({
       success: true,
       status,
+      type: assessResult.rows[0].assessment_type || "aptitude",
+      difficulty: assessResult.rows[0].difficulty,
       questions: questionsResult.rows.map((q) => ({
         id: q.id,
         number: q.question_number,
@@ -350,6 +358,14 @@ async function saveAnswer(req, res) {
     const { id } = req.params;
     const { questionId, answer, timeSpent, status } = req.body;
 
+    // Input limits — protect AI credits and DB
+    if (answer && String(answer).length > 2000) {
+      return res.status(400).json({ success: false, message: "Answer exceeds 2000 character limit." });
+    }
+    if (answer && Buffer.byteLength(String(answer), "utf8") > 100 * 1024) {
+      return res.status(413).json({ success: false, message: "Payload too large." });
+    }
+
     const assessResult = await db.query(
       `SELECT status FROM aptitude_assessments WHERE id = $1 AND user_id = $2`,
       [id, userId]
@@ -357,6 +373,20 @@ async function saveAnswer(req, res) {
     if (assessResult.rows.length === 0) return res.status(404).json({ message: "Assessment not found." });
     if (assessResult.rows[0].status !== "in_progress") {
       return res.status(400).json({ message: "Assessment is not in progress." });
+    }
+
+    const questionResult = await db.query(
+      `SELECT id FROM aptitude_questions WHERE id = $1 AND assessment_id = $2`,
+      [questionId, id]
+    );
+    if (questionResult.rows.length === 0) {
+      return res.status(400).json({ success: false, message: "Question does not belong to this assessment." });
+    }
+    if (status && !["unanswered", "answered", "skipped", "reviewed"].includes(status)) {
+      return res.status(400).json({ success: false, message: "Invalid answer status." });
+    }
+    if (timeSpent != null && (!Number.isFinite(Number(timeSpent)) || Number(timeSpent) < 0)) {
+      return res.status(400).json({ success: false, message: "Invalid time spent value." });
     }
 
     await db.query(
@@ -385,10 +415,27 @@ async function logMalpractice(req, res) {
     const { id } = req.params;
     const { type, severity, detail, browserInfo, questionNumber } = req.body;
 
+    const assessResult = await db.query(
+      `SELECT status FROM aptitude_assessments WHERE id = $1 AND user_id = $2`,
+      [id, userId]
+    );
+    if (assessResult.rows.length === 0) return res.status(404).json({ message: "Assessment not found." });
+    if (assessResult.rows[0].status !== "in_progress") {
+      return res.status(400).json({ message: "Assessment is not in progress." });
+    }
+    const questionNumberValue = Number(questionNumber || 0);
+    if (!Number.isInteger(questionNumberValue) || questionNumberValue < 0) {
+      return res.status(400).json({ success: false, message: "Invalid question number." });
+    }
+    const allowedSeverities = ["low", "medium", "high", "critical"];
+    if (severity && !allowedSeverities.includes(severity)) {
+      return res.status(400).json({ success: false, message: "Invalid violation severity." });
+    }
+
     await db.query(
       `INSERT INTO aptitude_malpractice_logs (assessment_id, question_number, type, severity, detail, browser_info, "timestamp")
        VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
-      [id, questionNumber || 0, type || "unknown", severity || "low", detail || null, browserInfo ? JSON.stringify(browserInfo) : null]
+      [id, questionNumberValue, type || "unknown", severity || "low", detail || null, browserInfo ? JSON.stringify(browserInfo) : null]
     );
 
     // Update warnings counter on assessment
@@ -413,10 +460,21 @@ async function complete(req, res) {
 
     const { id } = req.params;
 
-    const assessResult = await db.query(
-      `SELECT * FROM aptitude_assessments WHERE id = $1 AND user_id = $2`,
+    let claimedForEvaluation = false;
+    let assessResult = await db.query(
+      `UPDATE aptitude_assessments
+       SET status = 'evaluating', updated_at = NOW()
+       WHERE id = $1 AND user_id = $2 AND status = 'in_progress'
+       RETURNING *`,
       [id, userId]
     );
+    claimedForEvaluation = assessResult.rows.length > 0;
+    if (assessResult.rows.length === 0) {
+      assessResult = await db.query(
+        `SELECT * FROM aptitude_assessments WHERE id = $1 AND user_id = $2`,
+        [id, userId]
+      );
+    }
     if (assessResult.rows.length === 0) return res.status(404).json({ message: "Assessment not found." });
     const assessment = assessResult.rows[0];
     if (assessment.status === "completed") {
@@ -424,7 +482,10 @@ async function complete(req, res) {
       return res.json({ success: true, id: assessment.id, result: formatResult(assessment) });
     }
 
-    if (assessment.status !== "in_progress") {
+    if (assessment.status !== "in_progress" && !claimedForEvaluation) {
+      if (assessment.status === "evaluating") {
+        return res.status(409).json({ success: false, message: "Assessment submission is already being processed." });
+      }
       return res.status(400).json({ message: `Assessment cannot be completed. Current status: ${assessment.status}` });
     }
 
@@ -444,60 +505,109 @@ async function complete(req, res) {
     const questions = questionsResult.rows;
     const answers = answersResult.rows;
 
-    // Score calculation
+    // Score calculation — branched for English hybrid
     let correctCount = 0;
     let incorrectCount = 0;
     let skippedCount = 0;
-    const topicScores = {};
-    const difficultyScores = {};
-
-    for (const q of questions) {
-      const ans = answers.find((a) => a.question_id === q.id);
-      if (!ans || ans.status === "unanswered" || ans.user_answer == null || ans.user_answer === "") {
-        skippedCount++;
-        continue;
-      }
-
-      const correct = Array.isArray(q.correct_answer)
-        ? arraysEqual(JSON.parse(ans.user_answer || "[]"), q.correct_answer)
-        : String(ans.user_answer) === String(q.correct_answer);
-
-      if (correct) {
-        correctCount++;
-        // Update answer is_correct
-        db.query("UPDATE aptitude_answers SET is_correct = true WHERE id = $1", [ans.id]).catch(() => {});
-      } else {
-        incorrectCount++;
-        db.query("UPDATE aptitude_answers SET is_correct = false WHERE id = $1", [ans.id]).catch(() => {});
-      }
-
-      // Topic tracking
-      const topic = q.topic || "general";
-      if (!topicScores[topic]) topicScores[topic] = { correct: 0, total: 0 };
-      topicScores[topic].total++;
-      if (correct) topicScores[topic].correct++;
-
-      // Difficulty tracking
-      const diff = q.sub_difficulty || q.difficulty || "medium";
-      if (!difficultyScores[diff]) difficultyScores[diff] = { correct: 0, total: 0 };
-      difficultyScores[diff].total++;
-      if (correct) difficultyScores[diff].correct++;
-    }
+    let score = 0;
+    let accuracy = 0;
+    let topicPerformance = {};
+    let difficultyPerformance = {};
+    let weakTopics = [];
+    let strongTopics = [];
 
     const totalQuestions = questions.length;
-    const score = totalQuestions > 0 ? Math.round((correctCount / totalQuestions) * 100) : 0;
-    const accuracy = (correctCount + incorrectCount) > 0
-      ? Math.round((correctCount / (correctCount + incorrectCount)) * 100)
-      : 0;
+    const isEnglish = assessment.assessment_type === "english_communication";
+    let hybridEvaluation = null;
+    let evaluationJson = null;
 
-    const topicPerformance = {};
-    for (const [t, s] of Object.entries(topicScores)) topicPerformance[t] = Math.round((s.correct / s.total) * 100);
-
-    const difficultyPerformance = {};
-    for (const [d, s] of Object.entries(difficultyScores)) difficultyPerformance[d] = Math.round((s.correct / s.total) * 100);
-
-    const weakTopics = Object.entries(topicPerformance).filter(([, p]) => p < 50).map(([t]) => t);
-    const strongTopics = Object.entries(topicPerformance).filter(([, p]) => p >= 80).map(([t]) => t);
+    if (isEnglish) {
+      // Build ordered answer array aligned to questions
+      const orderedAnswers = questions.map((q) => {
+        const ans = answers.find((a) => a.question_id === q.id);
+        if (!ans || ans.status === "unanswered" || ans.user_answer == null || ans.user_answer === "") return "";
+        return ans.user_answer;
+      });
+      // Map DB rows to evaluation format (options parsed, rubric)
+      const evalQuestions = questions.map((q) => ({
+        id: q.id,
+        question_number: q.question_number,
+        question: q.question_text,
+        type: q.type,
+        options: q.options,
+        correct_answer: q.correct_answer,
+        topic: q.topic,
+        difficulty: q.difficulty,
+        sub_difficulty: q.sub_difficulty,
+        passage: q.passage,
+        rubric: q.rubric ? (typeof q.rubric === "string" ? JSON.parse(q.rubric) : q.rubric) : null,
+        explanation: q.explanation,
+      }));
+      const hybrid = await evaluateEnglishAssessment({ questions: evalQuestions, answers: orderedAnswers, difficulty: assessment.difficulty });
+      hybridEvaluation = hybrid;
+      evaluationJson = {
+        version: 1,
+        evaluator: "english-hybrid",
+        categoryScores: hybrid.categoryScores || {},
+        dimensionScores: hybrid.dimensionScores || {},
+        details: hybrid.details || [],
+        llmCalls: hybrid.llmCalls || 0,
+      };
+      score = hybrid.overall;
+      topicPerformance = hybrid.categoryPct || {};
+      // Derive difficulty performance from topic if not provided
+      difficultyPerformance = { [assessment.difficulty]: score };
+      weakTopics = Object.entries(topicPerformance).filter(([, p]) => p < 50).map(([t]) => t);
+      strongTopics = Object.entries(topicPerformance).filter(([, p]) => p >= 80).map(([t]) => t);
+      // Derive correct/incorrect/skipped for storage
+      for (let i = 0; i < evalQuestions.length; i++) {
+        const ans = orderedAnswers[i];
+        if (!ans || ans === "") { skippedCount++; continue; }
+        const d = hybrid.details[i];
+        const isCorrect = d && d.score >= 60;
+        if (isCorrect) correctCount++; else incorrectCount++;
+        const qAns = answers.find((a) => a.question_id === evalQuestions[i].id);
+        if (qAns) db.query("UPDATE aptitude_answers SET is_correct = $1 WHERE id = $2", [isCorrect, qAns.id]).catch(() => {});
+      }
+      accuracy = (correctCount + incorrectCount) > 0 ? Math.round((correctCount / (correctCount + incorrectCount)) * 100) : 0;
+    } else {
+      const topicScores = {};
+      const difficultyScores = {};
+      for (const q of questions) {
+        const ans = answers.find((a) => a.question_id === q.id);
+        if (!ans || ans.status === "unanswered" || ans.user_answer == null || ans.user_answer === "") {
+          skippedCount++;
+          continue;
+        }
+        let correct = false;
+        try {
+          const parsedCorrect = typeof q.correct_answer === "string" ? JSON.parse(q.correct_answer) : q.correct_answer;
+          if (Array.isArray(parsedCorrect)) correct = JSON.stringify(JSON.parse(ans.user_answer || "[]")) === JSON.stringify(parsedCorrect);
+          else correct = String(ans.user_answer) === String(parsedCorrect);
+        } catch { correct = String(ans.user_answer) === String(q.correct_answer); }
+        if (correct) {
+          correctCount++;
+          db.query("UPDATE aptitude_answers SET is_correct = true WHERE id = $1", [ans.id]).catch(() => {});
+        } else {
+          incorrectCount++;
+          db.query("UPDATE aptitude_answers SET is_correct = false WHERE id = $1", [ans.id]).catch(() => {});
+        }
+        const topic = q.topic || "general";
+        if (!topicScores[topic]) topicScores[topic] = { correct: 0, total: 0 };
+        topicScores[topic].total++;
+        if (correct) topicScores[topic].correct++;
+        const diff = q.sub_difficulty || q.difficulty || "medium";
+        if (!difficultyScores[diff]) difficultyScores[diff] = { correct: 0, total: 0 };
+        difficultyScores[diff].total++;
+        if (correct) difficultyScores[diff].correct++;
+      }
+      score = totalQuestions > 0 ? Math.round((correctCount / totalQuestions) * 100) : 0;
+      accuracy = (correctCount + incorrectCount) > 0 ? Math.round((correctCount / (correctCount + incorrectCount)) * 100) : 0;
+      for (const [t, s] of Object.entries(topicScores)) topicPerformance[t] = Math.round((s.correct / s.total) * 100);
+      for (const [d, s] of Object.entries(difficultyScores)) difficultyPerformance[d] = Math.round((s.correct / s.total) * 100);
+      weakTopics = Object.entries(topicPerformance).filter(([, p]) => p < 50).map(([t]) => t);
+      strongTopics = Object.entries(topicPerformance).filter(([, p]) => p >= 80).map(([t]) => t);
+    }
 
     // Fetch malpractice logs
     const malpracticeResult = await db.query(
@@ -528,11 +638,32 @@ async function complete(req, res) {
     let improvementPlan = [];
     let learningRoadmap = [];
 
-    try {
+    if (isEnglish && hybridEvaluation) {
+      const dimensions = hybridEvaluation.dimensionScores || {};
+      const weakDimensions = Object.entries(dimensions).filter(([, value]) => value < 70).map(([key]) => key);
+      const proficiency = hybridEvaluation.categoryScores?.englishProficiency ?? score;
+      const communication = hybridEvaluation.categoryScores?.communication ?? score;
+      feedback = `English proficiency scored ${proficiency}% and communication scored ${communication}%.`;
+      if (weakDimensions.length > 0) feedback += ` Focus next on ${weakDimensions.join(", ")} for measurable improvement.`;
+      improvementPlan = weakDimensions.slice(0, 4).map((key) => `Practice ${key} using short, timed workplace responses.`);
+      learningRoadmap = weakDimensions.slice(0, 4).map((key) => `Review ${key} examples, then apply the skill in a professional message.`);
+    } else try {
+      const isGk = assessment.assessment_type === "general_knowledge";
+      const isEnglish = assessment.assessment_type === "english_communication";
       const evalMessages = [
         {
           role: "system",
-          content: `You are a senior placement aptitude evaluator. Analyze performance and return JSON:
+          content: isGk
+            ? `You are a general knowledge assessment evaluator. Analyze performance and return JSON:
+- feedback: 3-5 sentence constructive assessment
+- improvementPlan: array of 4-5 actionable study steps
+- learningRoadmap: array of 4-5 resource suggestions`
+            : isEnglish
+            ? `You are an English & Communication assessment evaluator. Analyze performance and return JSON:
+- feedback: 3-5 sentence constructive assessment focusing on grammar, vocabulary, coherence and professionalism
+- improvementPlan: array of 4-5 actionable English improvement steps
+- learningRoadmap: array of 4-5 resource suggestions`
+            : `You are a senior placement aptitude evaluator. Analyze performance and return JSON:
 - feedback: 3-5 sentence constructive assessment
 - improvementPlan: array of 4-5 actionable steps
 - learningRoadmap: array of 4-5 resource suggestions`,
@@ -540,6 +671,7 @@ async function complete(req, res) {
         {
           role: "user",
           content: JSON.stringify({
+            assessmentType: isGk ? "general-knowledge" : isEnglish ? "english-communication" : "aptitude",
             difficulty: assessment.difficulty,
             score,
             correctCount,
@@ -569,32 +701,44 @@ async function complete(req, res) {
         terminated = $8, risk_level = $9, remarks = $10, malpractice_summary = $11,
         violation_log = $12, topic_performance = $13, difficulty_performance = $14,
         weak_topics = $15, strong_topics = $16, feedback = $17,
-        improvement_plan = $18, learning_roadmap = $19, completed_at = NOW(), updated_at = NOW()
-      WHERE id = $20`,
+        improvement_plan = $18, learning_roadmap = $19, evaluation_json = $20,
+        completed_at = NOW(), updated_at = NOW()
+      WHERE id = $21`,
       [
-        id, score, correctCount, incorrectCount, skippedCount,
+        score, correctCount, incorrectCount, skippedCount,
         Math.round(accuracy * 100) / 100, timeTaken, totalWarnings,
         terminated, riskLevel, remarks,
         JSON.stringify(malpracticeSummary), JSON.stringify(violationList),
         JSON.stringify(topicPerformance), JSON.stringify(difficultyPerformance),
         JSON.stringify(weakTopics), JSON.stringify(strongTopics),
         feedback, JSON.stringify(improvementPlan), JSON.stringify(learningRoadmap),
+        evaluationJson, id,
       ]
     );
 
     const result = {
-      id: assessment.id,
+      id: assessment.id, type: assessment.assessment_type || "aptitude",
       score, correct: correctCount, incorrect: incorrectCount,
       total: totalQuestions, accuracy: Math.round(accuracy * 100) / 100,
       difficulty: assessment.difficulty, timeTaken, warnings: totalWarnings,
       violations: violationList, terminated,
       topicPerformance, difficultyPerformance,
       weakTopics, strongTopics, feedback, improvementPlan, learningRoadmap,
+      categoryScores: hybridEvaluation?.categoryScores || {},
+      dimensionScores: hybridEvaluation?.dimensionScores || {},
+      details: hybridEvaluation?.details || [],
+      evaluation: evaluationJson,
       riskLevel, remarks, malpracticeSummary,
     };
 
     res.json({ success: true, id: assessment.id, result });
   } catch (error) {
+    if (req.params?.id) {
+      await db.query(
+        `UPDATE aptitude_assessments SET status = 'in_progress', updated_at = NOW() WHERE id = $1 AND status = 'evaluating'`,
+        [req.params.id]
+      ).catch(() => {});
+    }
     console.error("Complete assessment error:", error.message);
     res.status(500).json({ success: false, message: "Failed to complete assessment." });
   }
@@ -621,21 +765,99 @@ async function cancel(req, res) {
   }
 }
 
-// ─── 10. History ───────────────────────────────────────────────────────────
+// ─── 10. Reattempt (clone stored questions — no LLM) ──────────────────────
+
+async function reattempt(req, res) {
+  try {
+    const userId = await resolveUserId(req.user.uid);
+    if (!userId) return res.status(404).json({ message: "User not found." });
+
+    const { id } = req.params;
+
+    const srcResult = await db.query(
+      `SELECT id, difficulty, assessment_type FROM aptitude_assessments
+       WHERE id = $1 AND user_id = $2 AND status = 'completed'`,
+      [id, userId]
+    );
+    const src = srcResult.rows[0];
+    if (!src) return res.status(404).json({ message: "Completed assessment not found." });
+
+    const srcQuestions = await db.query(
+      `SELECT question_number, type, question_text, options, correct_answer, topic,
+              difficulty, sub_difficulty, marks, expected_time,
+              solution, explanation, learning_objective, common_mistake, passage, rubric, batch_number
+       FROM aptitude_questions WHERE assessment_id = $1 ORDER BY question_number`,
+      [id]
+    );
+    if (srcQuestions.rows.length === 0) {
+      return res.status(400).json({ success: false, message: "No questions stored for this assessment." });
+    }
+
+    const newAssessment = await db.query(
+      `INSERT INTO aptitude_assessments
+         (user_id, difficulty, status, total_questions, questions_generated, assessment_type, created_at, updated_at)
+       VALUES ($1, $2, 'ready', $3, $3, $4, NOW(), NOW())
+       RETURNING id`,
+      [userId, src.difficulty, srcQuestions.rows.length, src.assessment_type || "aptitude"]
+    );
+    const newId = newAssessment.rows[0].id;
+
+    const rows = srcQuestions.rows;
+    const values = [];
+    const params = [];
+    rows.forEach((q, i) => {
+      const b = i * 18;
+      values.push(`($${b + 1},$${b + 2},$${b + 3},$${b + 4},$${b + 5},$${b + 6},$${b + 7},$${b + 8},$${b + 9},$${b + 10},$${b + 11},$${b + 12},$${b + 13},$${b + 14},$${b + 15},$${b + 16},$${b + 17},$${b + 18})`);
+      params.push(
+        newId, q.question_number, q.type || "mcq", q.question_text, JSON.stringify(q.options || []), q.correct_answer,
+        q.topic, q.difficulty, q.sub_difficulty || q.difficulty, q.marks != null ? q.marks : 1, q.expected_time,
+        q.solution, q.explanation, q.learning_objective, q.common_mistake, q.passage, JSON.stringify(q.rubric || null), q.batch_number || 0
+      );
+    });
+    await db.query(
+      `INSERT INTO aptitude_questions
+         (assessment_id, question_number, type, question_text, options, correct_answer,
+          topic, difficulty, sub_difficulty, marks, expected_time,
+          solution, explanation, learning_objective, common_mistake, passage, rubric, batch_number)
+       VALUES ${values.join(",")}`,
+      params
+    );
+
+    res.status(201).json({ success: true, assessmentId: newId });
+  } catch (error) {
+    console.error("Reattempt error:", error.message);
+    res.status(500).json({ success: false, message: "Failed to create reattempt." });
+  }
+}
+
+// ─── 11. History ───────────────────────────────────────────────────────────
 
 async function getHistory(req, res) {
   try {
     const userId = await resolveUserId(req.user.uid);
     if (!userId) return res.status(404).json({ message: "User not found." });
 
-    const result = await db.query(
-      `SELECT id, difficulty, score, total_questions, correct_count, accuracy,
-              time_taken, warnings, terminated, completed_at, created_at, status
-       FROM aptitude_assessments
-       WHERE user_id = $1
-       ORDER BY created_at DESC LIMIT 50`,
-      [userId]
-    );
+    const { type, limit } = req.query;
+    const typeFilter = ASSESSMENT_TYPES.has(type) ? type : null;
+    const limitValue = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 100);
+
+    const result = typeFilter
+      ? await db.query(
+          `SELECT id, assessment_type, difficulty, score, total_questions, correct_count, accuracy,
+                  time_taken, warnings, terminated, completed_at, created_at, status
+           FROM aptitude_assessments
+           WHERE user_id = $1 AND assessment_type = $2
+           ORDER BY created_at DESC LIMIT $3`,
+          [userId, typeFilter, limitValue]
+        )
+      : await db.query(
+          `SELECT id, assessment_type, difficulty, score, total_questions, correct_count, accuracy,
+                  time_taken, warnings, terminated, completed_at, created_at, status
+           FROM aptitude_assessments
+           WHERE user_id = $1
+           ORDER BY created_at DESC LIMIT $2`,
+          [userId, limitValue]
+        );
 
     res.json({ success: true, history: result.rows });
   } catch (error) {
@@ -672,15 +894,28 @@ async function getRemarks(req, res) {
     const userId = await resolveUserId(req.user.uid);
     if (!userId) return res.status(404).json({ message: "User not found." });
 
-    const result = await db.query(
-      `SELECT id, difficulty, score, accuracy, time_taken, warnings,
-              terminated, risk_level, remarks, malpractice_summary,
-              violation_log, completed_at, created_at
-       FROM aptitude_assessments
-       WHERE user_id = $1 AND status = 'completed'
-       ORDER BY created_at DESC LIMIT 20`,
-      [userId]
-    );
+    const { type } = req.query;
+    const typeFilter = ASSESSMENT_TYPES.has(type) ? type : null;
+
+    const result = typeFilter
+      ? await db.query(
+          `SELECT id, assessment_type, difficulty, score, accuracy, time_taken, warnings,
+                  terminated, risk_level, remarks, malpractice_summary,
+                  violation_log, completed_at, created_at
+           FROM aptitude_assessments
+           WHERE user_id = $1 AND assessment_type = $2 AND status = 'completed'
+           ORDER BY created_at DESC LIMIT 20`,
+          [userId, typeFilter]
+        )
+      : await db.query(
+          `SELECT id, assessment_type, difficulty, score, accuracy, time_taken, warnings,
+                  terminated, risk_level, remarks, malpractice_summary,
+                  violation_log, completed_at, created_at
+           FROM aptitude_assessments
+           WHERE user_id = $1 AND status = 'completed'
+           ORDER BY created_at DESC LIMIT 20`,
+          [userId]
+        );
 
     res.json({ success: true, remarks: result.rows });
   } catch (error) {
@@ -750,11 +985,107 @@ async function getRemarkDetail(req, res) {
   }
 }
 
+// ─── 13. Question Review ───────────────────────────────────────────
+
+async function getReview(req, res) {
+  try {
+    const userId = await resolveUserId(req.user.uid);
+    if (!userId) return res.status(404).json({ message: "User not found." });
+
+    const { id } = req.params;
+    const assessResult = await db.query(
+      `SELECT * FROM aptitude_assessments WHERE id = $1 AND user_id = $2`,
+      [id, userId]
+    );
+    if (assessResult.rows.length === 0) return res.status(404).json({ success: false, message: "Assessment not found." });
+    const assessment = assessResult.rows[0];
+    const storedEvaluation = assessment.evaluation_json && typeof assessment.evaluation_json === "object"
+      ? assessment.evaluation_json
+      : {};
+
+    const questionsResult = await db.query(
+      `SELECT q.id, q.question_number, q.type, q.question_text, q.options, q.correct_answer,
+              q.topic, q.sub_difficulty, q.difficulty, q.marks, q.expected_time,
+              q.solution, q.explanation, q.passage,
+              a.user_answer, a.time_spent, a.status AS answer_status, a.is_correct
+       FROM aptitude_questions q
+       LEFT JOIN aptitude_answers a ON a.question_id = q.id
+       WHERE q.assessment_id = $1
+       ORDER BY q.question_number`,
+      [id]
+    );
+
+    const questions = questionsResult.rows.map((q) => {
+      let correctAnswer = q.correct_answer;
+      try { correctAnswer = JSON.parse(q.correct_answer); } catch { /* keep raw */ }
+
+      let userAnswer = q.user_answer;
+      try { userAnswer = userAnswer == null ? null : JSON.parse(userAnswer); } catch { /* keep raw */ }
+
+      const answerStatus = q.answer_status || "unanswered";
+      const empty = isAnswerEmpty(userAnswer) || answerStatus === "unanswered" || answerStatus === "skipped";
+      const hybridDetail = (storedEvaluation.details || []).find((detail) =>
+        detail.questionNumber === q.question_number || String(detail.questionId) === String(q.id)
+      );
+      const isEnglish = assessment.assessment_type === "english_communication";
+      const correct = !empty && (isEnglish
+        ? Number(hybridDetail?.score || 0) >= 60
+        : isAnswerCorrect({ type: q.type, correct_answer: correctAnswer }, parseAnswer(userAnswer)));
+
+      return {
+        id: q.id,
+        number: q.question_number,
+        type: q.type,
+        question: q.question_text,
+        options: q.options,
+        correctAnswer,
+        topic: q.topic,
+        difficulty: q.sub_difficulty || q.difficulty,
+        marks: q.marks,
+        expectedTime: q.expected_time,
+        explanation: q.explanation || q.solution || "",
+        solution: q.solution || "",
+        passage: q.passage,
+        userAnswer: empty ? null : userAnswer,
+        status: empty ? "skipped" : correct ? "answered" : "answered",
+        isCorrect: correct,
+        score: hybridDetail?.score ?? (correct ? 100 : 0),
+        breakdown: hybridDetail?.breakdown || null,
+        evaluationFeedback: hybridDetail?.feedback || "",
+        timeSpent: q.time_spent || 0,
+      };
+    });
+
+    res.json({
+      success: true,
+      review: {
+        id: assessment.id,
+        type: assessment.assessment_type || "aptitude",
+        score: assessment.score,
+        correct: assessment.correct_count,
+        incorrect: assessment.incorrect_count,
+        skipped: assessment.skipped_count,
+        total: assessment.total_questions,
+        accuracy: assessment.accuracy,
+        status: assessment.status,
+        categoryScores: storedEvaluation.categoryScores || {},
+        dimensionScores: storedEvaluation.dimensionScores || {},
+        questions,
+      },
+    });
+  } catch (error) {
+    console.error("Get review error:", error.message);
+    res.status(500).json({ success: false, message: "Failed to fetch review." });
+  }
+}
+
 // ─── Format Helper ─────────────────────────────────────────────────────────
 
 function formatResult(r) {
+  const evaluation = r.evaluation_json && typeof r.evaluation_json === "object" ? r.evaluation_json : {};
   return {
     id: r.id,
+    type: r.assessment_type || "aptitude",
     score: r.score,
     correct: r.correct_count,
     incorrect: r.incorrect_count,
@@ -763,10 +1094,14 @@ function formatResult(r) {
     difficulty: r.difficulty,
     timeTaken: r.time_taken,
     warnings: r.warnings || 0,
-    violations: r.violations || [],
+    violations: r.violations || r.violation_log || [],
     terminated: r.terminated,
     topicPerformance: r.topic_performance || {},
     difficultyPerformance: r.difficulty_performance || {},
+    categoryScores: evaluation.categoryScores || {},
+    dimensionScores: evaluation.dimensionScores || {},
+    details: evaluation.details || [],
+    evaluation,
     weakTopics: r.weak_topics || [],
     strongTopics: r.strong_topics || [],
     feedback: r.feedback || "",
@@ -799,8 +1134,10 @@ module.exports = {
   logMalpractice,
   complete,
   cancel,
+  reattempt,
   getHistory,
   getResult,
   getRemarks,
   getRemarkDetail,
+  getReview,
 };

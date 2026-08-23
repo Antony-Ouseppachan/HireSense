@@ -8,7 +8,12 @@
 const db = require("../config/database");
 
 const MIGRATIONS = [
+  `ALTER TABLE aptitude_assessments ALTER COLUMN assessment_type TYPE VARCHAR(30)`,
+  `ALTER TABLE aptitude_questions DROP CONSTRAINT IF EXISTS aptitude_questions_type_check`,
+  `ALTER TABLE aptitude_questions ADD CONSTRAINT aptitude_questions_type_check
+      CHECK (type IN ('mcq','multiple','numerical','boolean','comprehension','descriptive','situational','professional'))`,
   `ALTER TABLE aptitude_assessments
+      ADD COLUMN IF NOT EXISTS assessment_type VARCHAR(30) NOT NULL DEFAULT 'aptitude',
      ADD COLUMN IF NOT EXISTS grade VARCHAR(30) DEFAULT NULL,
      ADD COLUMN IF NOT EXISTS integrity_score INTEGER DEFAULT NULL,
      ADD COLUMN IF NOT EXISTS percentile NUMERIC(5,2) DEFAULT NULL,
@@ -22,7 +27,10 @@ const MIGRATIONS = [
      ADD COLUMN IF NOT EXISTS next_suggested_test VARCHAR(120) DEFAULT NULL,
      ADD COLUMN IF NOT EXISTS evaluation_json JSONB DEFAULT NULL`,
   `CREATE INDEX IF NOT EXISTS idx_aa_status_completed
-     ON aptitude_assessments (user_id, status, created_at DESC)`,
+      ON aptitude_assessments (user_id, status, created_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_aa_type_status
+      ON aptitude_assessments (assessment_type, status, user_id, created_at DESC)`,
+  `ALTER TABLE aptitude_questions ADD COLUMN IF NOT EXISTS rubric JSONB DEFAULT NULL`,
 ];
 
 async function ensureAptitudeSchema() {

@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS aptitude_questions (
   id                SERIAL PRIMARY KEY,
   assessment_id     INTEGER NOT NULL REFERENCES aptitude_assessments(id) ON DELETE CASCADE,
   question_number   INTEGER NOT NULL,
-  type              VARCHAR(20) NOT NULL CHECK (type IN ('mcq','multiple','numerical','boolean','comprehension')),
+  type              VARCHAR(20) NOT NULL CHECK (type IN ('mcq','multiple','numerical','boolean','comprehension','descriptive','situational','professional')),
   question_text     TEXT NOT NULL,
   options           JSONB,
   correct_answer    TEXT NOT NULL,
@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS aptitude_questions (
   learning_objective TEXT,
   common_mistake    TEXT,
   passage           TEXT,
+  rubric            JSONB,
   batch_number      INTEGER NOT NULL DEFAULT 1,
   created_at        TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE (assessment_id, question_number)

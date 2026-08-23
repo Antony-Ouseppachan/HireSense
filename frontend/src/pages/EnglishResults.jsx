@@ -40,9 +40,9 @@ function AnimatedBar({ name, pct, className = "" }) {
 const container = { hidden: {}, show: { transition: { staggerChildren: 0.06 } } };
 const itemAnim = { hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.16, 1, 0.3, 1] } } };
 
-const MODULE_LABELS = { aptitude: "Aptitude", general_knowledge: "General Knowledge" };
+const MODULE_LABELS = { aptitude: "Aptitude", general_knowledge: "General Knowledge", english_communication: "English & Communication" };
 
-export default function AptitudeResults() {
+export default function EnglishResults() {
   const { id } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -62,7 +62,7 @@ export default function AptitudeResults() {
       const res = await reattemptAssessment(id);
       const newId = res?.assessmentId;
       if (!newId) throw new Error("No assessment created");
-      navigate(`/aptitude/test?id=${newId}`);
+      navigate(`/english/test?id=${newId}`);
     } catch {
       setReattemptError("Could not start a reattempt. Please try again.");
       setReattempting(false);
@@ -89,7 +89,7 @@ export default function AptitudeResults() {
     <div className="apt-page"><div className="apt-container"><div className="apt-error">
       <svg className="apt-error-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/></svg>
       <h3>Results not found</h3><p>{error}</p>
-      <Link to="/aptitude" className="apt-retry-btn" style={{ textDecoration: "none", display: "inline-block", padding: "10px 24px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.12)", color: "var(--text-primary)" }}>Take Another Test</Link>
+      <Link to="/english" className="apt-retry-btn" style={{ textDecoration: "none", display: "inline-block", padding: "10px 24px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.12)", color: "var(--text-primary)" }}>Take Another Test</Link>
     </div></div></div>);
   if (!result) return null;
 
@@ -102,8 +102,8 @@ export default function AptitudeResults() {
   const accuracy = correct > 0 ? (correct / (correct + incorrect)) * 100 : 0;
   const status = r.terminated ? "disqualified" : score >= 40 ? "passed" : "failed";
   const difficulty = r.difficulty || "medium";
-  const type = r.type || "aptitude";
-  const moduleLabel = MODULE_LABELS[type] || "Aptitude";
+  const type = r.type || "english_communication";
+  const moduleLabel = MODULE_LABELS[type] || "English & Communication";
   const timeTaken = r.timeTaken || r.duration || 0;
   const mins = Math.floor(timeTaken / 60);
   const secs = timeTaken % 60;
@@ -117,6 +117,45 @@ export default function AptitudeResults() {
   const diffPct = {};
   if (r.difficultyPerformance) {
     Object.entries(r.difficultyPerformance).forEach(([d, pct]) => { diffPct[d] = pct; });
+  }
+
+  const categoryScores = r.categoryScores || r.evaluation?.categoryScores || {};
+  const dimensionScores = r.dimensionScores || r.evaluation?.dimensionScores || {};
+
+  // English-specific metrics: relevance, grammar, vocabulary, coherence, professionalism, conciseness
+  const englishMetrics = [];
+  const addMetric = (key, label) => {
+    let val = null;
+    if (r[key] != null) val = r[key];
+    else if (r.scores && r.scores[key] != null) val = r.scores[key];
+    else if (r.categoryScores && r.categoryScores[key] != null) val = r.categoryScores[key];
+    else if (dimensionScores[key] != null) val = dimensionScores[key];
+    else if (topicPct[key] != null) val = topicPct[key];
+    else {
+      // case-insensitive search in topicPerformance
+      const foundKey = Object.keys(topicPct).find(k => k.toLowerCase() === key.toLowerCase());
+      if (foundKey) val = topicPct[foundKey];
+    }
+    if (val != null && !isNaN(parseFloat(val))) englishMetrics.push([label, parseFloat(val)]);
+  };
+  addMetric("relevance", "Relevance");
+  addMetric("grammar", "Grammar");
+  addMetric("vocabulary", "Vocabulary");
+  addMetric("coherence", "Coherence");
+  addMetric("professionalism", "Professionalism");
+  addMetric("conciseness", "Conciseness");
+
+  // If no explicit english metrics but topicPct has entries, ensure they show under Topic Performance; englishMetrics covers explicit bars
+  const showEnglishBars = englishMetrics.length > 0;
+  // Filter english metrics out of topicPct display to avoid duplication if already shown separately
+  const filteredTopicPct = { ...topicPct };
+  if (showEnglishBars) {
+    englishMetrics.forEach(([label]) => {
+      const lower = label.toLowerCase();
+      Object.keys(filteredTopicPct).forEach(k => {
+        if (k.toLowerCase() === lower) delete filteredTopicPct[k];
+      });
+    });
   }
 
   return (
@@ -150,12 +189,37 @@ export default function AptitudeResults() {
           ))}
         </motion.div>
 
-        {/* Topic Performance */}
-        {Object.keys(topicPct).length > 0 && (
+        <motion.div className="apt-english-score-grid" variants={itemAnim}>
+          <div className="apt-english-score-card">
+            <span className="apt-english-score-label">English Proficiency</span>
+            <strong>{categoryScores.englishProficiency ?? score}%</strong>
+            <span>Grammar, vocabulary and objective English</span>
+          </div>
+          <div className="apt-english-score-card communication">
+            <span className="apt-english-score-label">Communication</span>
+            <strong>{categoryScores.communication ?? score}%</strong>
+            <span>Relevance, coherence and professional writing</span>
+          </div>
+        </motion.div>
+
+        {/* English Communication Breakdown: relevance/grammar/vocabulary/coherence */}
+        {showEnglishBars && (
+          <motion.div className="apt-section-card" variants={itemAnim}>
+            <h2 className="apt-section-title">Communication Breakdown</h2>
+            <div className="apt-topic-list">
+              {englishMetrics.map(([label, pct]) => (
+                <AnimatedBar key={label} name={label} pct={pct} />
+              ))}
+            </div>
+          </motion.div>
+        )}
+
+        {/* Topic Performance (remaining topics) */}
+        {Object.keys(filteredTopicPct).length > 0 && (
           <motion.div className="apt-section-card" variants={itemAnim}>
             <h2 className="apt-section-title">Topic Performance</h2>
             <div className="apt-topic-list">
-              {Object.entries(topicPct).map(([topic, pct]) => (
+              {Object.entries(filteredTopicPct).map(([topic, pct]) => (
                 <AnimatedBar key={topic} name={topic.charAt(0).toUpperCase() + topic.slice(1)} pct={pct} />
               ))}
             </div>
@@ -260,9 +324,9 @@ export default function AptitudeResults() {
           </button>
           {reattemptError && <p className="apt-start-hint" style={{ color: "#F87171" }}>{reattemptError}</p>}
           <div className="apt-results-secondary-actions">
-            <Link to={`/aptitude/review/${id}`} className="apt-action-btn apt-action-btn-primary">View Remarks &amp; Answers</Link>
-            <Link to="/aptitude/history" className="apt-action-btn">View Assessment History</Link>
-            <Link to="/aptitude" className="apt-action-btn">Take Another Test</Link>
+            <Link to={`/english/review/${id}`} className="apt-action-btn apt-action-btn-primary">View Remarks &amp; Answers</Link>
+            <Link to="/english/history" className="apt-action-btn">View Assessment History</Link>
+            <Link to="/english" className="apt-action-btn">Take Another Test</Link>
             <Link to="/dashboard" className="apt-action-btn">Back to Dashboard</Link>
           </div>
         </motion.div>

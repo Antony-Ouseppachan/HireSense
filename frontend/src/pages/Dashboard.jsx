@@ -1,18 +1,27 @@
-﻿import { useState, useEffect, useRef, useMemo } from "react";
-import { Link } from "react-router-dom";
+import { useState, useEffect, useRef, useMemo } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "../context/AuthContext";
+import { useSearch } from "../context/SearchContext";
 import useDashboardData from "../hooks/useDashboardData";
-import { uploadResume, deleteResume, getAptitudeRemarkDetail } from "../services/apiService";
+import { uploadResume, deleteResume, getAptitudeRemarkDetail, reattemptAssessment } from "../services/apiService";
 import LoadingSpinner from "../components/LoadingSpinner";
 import "../styles/Dashboard.css";
 
 function LiveClock() {
   const [time, setTime] = useState(new Date());
-  useEffect(() => { const id = setInterval(() => setTime(new Date()), 1000); return () => clearInterval(id); }, []);
+  useEffect(() => {
+    const msToNextMinute = (60 - new Date().getSeconds()) * 1000 - new Date().getMilliseconds();
+    let interval;
+    const timeout = setTimeout(() => {
+      setTime(new Date());
+      interval = setInterval(() => setTime(new Date()), 60000);
+    }, msToNextMinute);
+    return () => { clearTimeout(timeout); if (interval) clearInterval(interval); };
+  }, []);
   return (
     <div className="dash-clock">
-      <span className="dash-clock-time">{time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
+      <span className="dash-clock-time">{time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
       <span className="dash-clock-date">{time.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })}</span>
     </div>
   );
@@ -45,49 +54,57 @@ function SkeletonBlock({ height = 120, count = 1 }) {
   );
 }
 
-function SearchOverlay({ open, onClose }) {
-  const [query, setQuery] = useState("");
-  useEffect(() => { if (!open) { setQuery(""); } }, [open]);
+function WidgetClockSearch() {
+  const { openSearch } = useSearch();
+  const [time, setTime] = useState(new Date());
+
   useEffect(() => {
-    if (!open) return;
-    const handler = (e) => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [open, onClose]);
-  const items = useMemo(() => {
-    if (!query.trim()) return [];
-    return [
-      { section: "Pages", items: [
-        { label: "Dashboard", link: "/dashboard" },
-        { label: "Interview Studio", link: "/interviews" },
-        { label: "Profile", link: "/profile" },
-      ]},
-    ].flatMap((s) => s.items.filter((i) => i.label.toLowerCase().includes(query.toLowerCase())).map((i) => ({ ...i, section: s.section })));
-  }, [query]);
+    const msToNextMinute = (60 - new Date().getSeconds()) * 1000 - new Date().getMilliseconds();
+    let interval;
+    const timeout = setTimeout(() => {
+      setTime(new Date());
+      interval = setInterval(() => setTime(new Date()), 60000);
+    }, msToNextMinute);
+    return () => { clearTimeout(timeout); if (interval) clearInterval(interval); };
+  }, []);
+
+  const hours = time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const dateStr = time.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" });
+
+  const isMac = typeof window !== "undefined" && navigator.userAgent.toLowerCase().includes("mac");
+  const shortcutText = isMac ? "⌘K" : "Ctrl+K";
+
   return (
-    <AnimatePresence>
-      {open && (
-        <motion.div className="dash-search-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
-          <motion.div className="dash-search-modal" initial={{ opacity: 0, scale: 0.96, y: -20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96, y: -20 }} transition={{ duration: 0.25 }} onClick={(e) => e.stopPropagation()}>
-            <div className="dash-search-input-wrap">
-              <svg className="dash-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-              <input className="dash-search-input" autoFocus placeholder="Search pages, interviews, documents..." value={query} onChange={(e) => setQuery(e.target.value)} />
-              <kbd className="dash-search-kbd">ESC</kbd>
-            </div>
-            {items.length > 0 && (
-              <div className="dash-search-results">
-                {items.map((item, i) => (
-                  <Link key={i} to={item.link} className="dash-search-item" onClick={onClose}>
-                    <span className="dash-search-item-label">{item.label}</span>
-                  </Link>
-                ))}
-              </div>
-            )}
-            {query.trim() && items.length === 0 && <p className="dash-search-empty">No results found.</p>}
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+    <div style={{ display: 'flex', flexDirection: 'column', width: '100%', gap: '16px' }}>
+
+      {/* Clock Display */}
+      <div style={{ textAlign: 'center', padding: '4px 0' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>
+          <span style={{ fontSize: '40px', fontWeight: 800, color: '#fff', letterSpacing: '-3px', fontVariantNumeric: 'tabular-nums' }}>{hours}</span>
+        </div>
+        <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)', margin: '6px 0 0', letterSpacing: '1.5px', textTransform: 'uppercase', fontWeight: 500 }}>{dateStr}</p>
+
+        {/* Separator */}
+        <div style={{ margin: '12px auto 0', width: '40px', height: '1px', background: 'linear-gradient(90deg, transparent, rgba(102,252,241,0.5), transparent)' }} />
+      </div>
+
+      {/* Navigation Search */}
+      <div style={{ position: 'relative' }}>
+        {/* Input Row */}
+        <div 
+          onClick={openSearch}
+          className="dash-search-trigger-bar"
+        >
+          <div className="dash-search-trigger-icon" style={{ display: 'flex', alignItems: 'center' }}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ width: '15px', height: '15px', display: 'block', flexShrink: 0 }}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          </div>
+          <span className="dash-search-trigger-placeholder" style={{ fontSize: '13px', flex: 1, letterSpacing: '0.2px', userSelect: 'none' }}>
+            Search to navigate...
+          </span>
+          <kbd className="dash-search-trigger-kbd" style={{ fontSize: '10px', borderRadius: '6px', padding: '2px 6px', fontFamily: 'inherit', flexShrink: 0 }}>{shortcutText}</kbd>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -95,19 +112,13 @@ const container = { hidden: {}, show: { transition: { staggerChildren: 0.06 } } 
 const itemAnim = { hidden: { opacity: 0, y: 24 }, show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.16, 1, 0.3, 1] } } };
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   const { user, isCandidate, isRecruiter } = useAuth();
   const { loading, error, refetch, profile, interviews, backendUser, displayName, initials, greeting, completion, interviewStats, activity, tasks, health, relativeTime, remarks } = useDashboardData();
-  const [searchOpen, setSearchOpen] = useState(false);
   const [resumeUploading, setResumeUploading] = useState(false);
   const [showResumeViewer, setShowResumeViewer] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-
-  useEffect(() => {
-    const h = (e) => { if ((e.ctrlKey || e.metaKey) && e.key === "k") { e.preventDefault(); setSearchOpen((o) => !o); } };
-    window.addEventListener("keydown", h);
-    return () => window.removeEventListener("keydown", h);
-  }, []);
 
   const handleResumeUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -137,10 +148,8 @@ export default function Dashboard() {
 
   if (loading) {
     return (
-      <div className="dash-root">
-        <div className="dash-container">
-          <LoadingSpinner label="Loading your workspace" />
-        </div>
+      <div className="dash-root" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
+        <LoadingSpinner label="Loading your workspace" />
       </div>
     );
   }
@@ -168,244 +177,198 @@ export default function Dashboard() {
   const isVerified = backendUser?.is_verified || false;
   const accountType = isCandidate ? "Candidate" : isRecruiter ? "Recruiter" : user?.role || "User";
 
+  if (health.integrityScore < 30) {
+    return (
+      <div className="dash-root" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div className="bento-widget" style={{ maxWidth: '400px', textAlign: 'center', borderColor: 'rgba(239, 68, 68, 0.4)' }}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" style={{ width: '48px', height: '48px', margin: '0 auto 16px' }}><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          <h2 style={{ fontSize: '24px', margin: '0 0 12px', color: '#fff' }}>Account Suspended</h2>
+          <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '14px', lineHeight: 1.6, marginBottom: '24px' }}>Your Integrity Shield has fallen below the critical threshold (30%). To ensure fair evaluation, your account has been temporarily locked.</p>
+          <a href="mailto:support@hiresense.com" className="dash-action-btn" style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '12px', color: '#fca5a5', padding: '12px', textDecoration: 'none' }}>Contact support@hiresense.com</a>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <motion.div className="dash-root" variants={container} initial="hidden" animate="show">
-      <SearchOverlay open={searchOpen} onClose={() => setSearchOpen(false)} />
-
-      <div className="dash-top-bar">
-        <button className="dash-search-trigger" onClick={() => setSearchOpen(true)}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="dash-search-trigger-icon"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-          <span>Search</span>
-          <kbd>Ctrl+K</kbd>
-        </button>
-        <LiveClock />
-      </div>
 
       <div className="dash-container">
-        {/* Greeting */}
-        <motion.section className="dash-greeting" variants={itemAnim}>
-          <h1 className="dash-greeting-text">{greeting}, <span className="dash-greeting-name">{displayName}</span></h1>
-          <p className="dash-greeting-sub">Welcome back to your AI workspace.</p>
-        </motion.section>
-
-        {/* Profile + Stats row */}
-        <div className="dash-profile-row">
-          <motion.div className="dash-profile-card" variants={itemAnim}>
-            <div className="dash-profile-left">
-              <div className="dash-avatar">
-                {profilePic ? <img src={profilePic} alt="" className="dash-avatar-img" /> : <span className="dash-avatar-initials">{initials}</span>}
-                <span className={`dash-online-dot ${profile ? "online" : ""}`} />
-              </div>
-              <div className="dash-profile-info">
-                <h3>{profile?.first_name ? `${profile.first_name} ${profile.last_name || ""}` : displayName}</h3>
-                <p className="dash-profile-email">{user?.email || ""}</p>
-                <div className="dash-profile-meta">
-                  <span className="dash-meta-tag">{accountType}</span>
-                  {isVerified && <span className="dash-meta-tag dash-meta-verified">Verified</span>}
-                </div>
-              </div>
-            </div>
-            <div className="dash-profile-right">
-              <div className="dash-completion-ring-wrap">
-                <svg className="dash-completion-ring" viewBox="0 0 40 40">
-                  <circle cx="20" cy="20" r="17" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="3" />
-                  <motion.circle cx="20" cy="20" r="17" fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth="3" strokeLinecap="round" strokeDasharray={106.8} initial={{ strokeDashoffset: 106.8 }} animate={{ strokeDashoffset: 106.8 - (106.8 * (completion.percentage || 0)) / 100 }} transition={{ duration: 1.2, ease: [0.16,1,0.3,1] }} transform="rotate(-90 20 20)" />
-                </svg>
-                <span className="dash-completion-pct">{completion.percentage || 0}%</span>
-              </div>
-              <span className="dash-completion-label">Profile</span>
-              {completion.percentage < 100 && (
-                <Link to="/profile" className="dash-profile-cta">Complete Profile</Link>
-              )}
-            </div>
-            <div className="dash-profile-stats">
-              <div className="dash-ps-item">
-                <span className="dash-ps-label">Joined</span>
-                <span className="dash-ps-value">{joinedDate ? new Date(joinedDate).toLocaleDateString() : "—"}</span>
-              </div>
-              <div className="dash-ps-item">
-                <span className="dash-ps-label">Last Login</span>
-                <span className="dash-ps-value">{lastLogin ? relativeTime(lastLogin) : "—"}</span>
-              </div>
-              <div className="dash-ps-item">
-                <span className="dash-ps-label">Plan</span>
-                <span className="dash-ps-value">{health.subscription}</span>
-              </div>
-              <div className="dash-ps-item">
-                <span className="dash-ps-label">Interviews</span>
-                <span className="dash-ps-value">{interviewStats.totalInterviews}</span>
-              </div>
-            </div>
-          </motion.div>
-        </div>
-
-        {/* Quick Stats */}
-        <motion.section className="dash-section" variants={itemAnim}>
-          <div className="dash-stats-grid">
-            {[
-              { label: "Interviews", value: interviewStats.totalInterviews, icon: "play" },
-              { label: "Completed", value: interviewStats.totalCompleted, icon: "check" },
-              { label: "Avg. Score", value: interviewStats.avgScore, suffix: "%", icon: "trending" },
-              { label: "Best Score", value: interviewStats.bestScore, suffix: "%", icon: "star" },
-              { label: "Resume", value: profile?.resume_url ? 1 : 0, suffix: profile?.resume_url ? "Uploaded" : "Missing", icon: "file" },
-              { label: "Skills", value: profile?.skills?.length || 0, icon: "layers" },
-            ].map((stat, i) => (
-              <motion.div key={i} className="dash-stat-card" whileHover={{ y: -4, transition: { duration: 0.3 } }}>
-                <div className="dash-stat-icon">
-                  <StatIcon name={stat.icon} />
-                </div>
-                <div className="dash-stat-body">
-                  <span className="dash-stat-value">
-                    {stat.value != null ? <CountUp value={stat.value} /> : "—"}
-                    {stat.suffix && <span className="dash-stat-suffix">{stat.suffix}</span>}
-                  </span>
-                  <span className="dash-stat-label">{stat.label}</span>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </motion.section>
-
-        {/* Resume Management */}
-        <motion.section className="dash-section" variants={itemAnim}>
-          <div className="dash-card">
-            <div className="dash-card-header">
-              <h2 className="dash-card-title">Resume</h2>
-            </div>
-            {resumeFileName ? (
-              <div className="dash-resume-status">
-                <div className="dash-resume-info">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="dash-resume-icon"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                  <span className="dash-resume-filename">{resumeFileName}</span>
-                </div>
-                <div className="dash-resume-actions">
-                  <button className="dash-resume-btn" onClick={() => setShowResumeViewer(true)}>View</button>
-                  <button className="dash-resume-btn dash-resume-btn-danger" onClick={() => setShowDeleteConfirm(true)}>Delete</button>
-                </div>
-              </div>
-            ) : (
-              <div className="dash-resume-empty">
-                <p>No resume uploaded yet.</p>
-                <label className="dash-resume-upload-label">
-                  <input type="file" accept=".pdf,.doc,.docx" onChange={handleResumeUpload} disabled={resumeUploading} hidden />
-                  <span className="dash-resume-upload-btn">{resumeUploading ? "Uploading..." : "Upload Resume"}</span>
-                </label>
-              </div>
-            )}
-          </div>
-        </motion.section>
-
-        {/* Quick Actions */}
-        <motion.section className="dash-section" variants={itemAnim}>
-          <div className="dash-actions-grid">
-            {[
-              { label: "Start AI Interview", icon: "play", to: "/interviews" },
-              { label: "Edit Profile", icon: "user", to: "/profile" },
-            ].map((action, i) => (
-              <motion.div key={i} className="dash-action-card" whileHover={{ scale: 1.02, y: -3 }} whileTap={{ scale: 0.98 }}>
-                <Link to={action.to} className="dash-action-btn">
-                  <ActionIcon name={action.icon} />
-                  <span>{action.label}</span>
-                </Link>
-              </motion.div>
-            ))}
-          </div>
-        </motion.section>
-
-        {/* Activity + Notifications row */}
-        <div className="dash-two-col">
-          <motion.section className="dash-section" variants={itemAnim}>
-            <div className="dash-card">
-              <div className="dash-card-header">
-                <h2 className="dash-card-title">Recent Activity</h2>
-              </div>
-              {activity.length === 0 ? (
-                <div className="dash-empty">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="dash-empty-icon"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-                  <p>No activity yet.</p>
-                  <Link to="/interviews" className="dash-empty-cta">Start Your First Interview</Link>
-                </div>
-              ) : (
-                <div className="dash-timeline">
-                  {activity.map((ev, i) => (
-                    <div key={i} className="dash-timeline-item">
-                      <div className="dash-tl-dot">
-                        <ActivityDot type={ev.type} />
-                      </div>
-                      <div className="dash-tl-content">
-                        <span className="dash-tl-label">{ev.label}</span>
-                        {ev.score != null && <span className="dash-tl-score">{ev.score}%</span>}
-                      </div>
-                      <span className="dash-tl-time">{relativeTime(ev.date)}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </motion.section>
-
-          <motion.section className="dash-section" variants={itemAnim}>
-            <div className="dash-card">
-              <div className="dash-card-header">
-                <h2 className="dash-card-title">Upcoming Tasks</h2>
-                <span className="dash-card-badge">{tasks.length}</span>
-              </div>
-              {tasks.length === 0 ? (
-                <div className="dash-empty">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="dash-empty-icon"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-                  <p>All tasks completed!</p>
-                </div>
-              ) : (
-                <div className="dash-task-list">
-                  {tasks.map((task) => (
-                    <div key={task.id} className="dash-task-item">
-                      <span className={`dash-task-priority dash-priority-${task.priority}`} />
-                      <span className="dash-task-label">{task.label}</span>
-                      {task.id === "profile" && <Link to="/profile" className="dash-task-link">Go</Link>}
-                      {task.id === "resume" && <button className="dash-task-link" onClick={() => document.getElementById("resume-input")?.click()}>Upload</button>}
-                      {task.id === "skills" && <Link to="/profile" className="dash-task-link">Add</Link>}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </motion.section>
-        </div>
-
-        {/* Account Health */}
-        <motion.section className="dash-section" variants={itemAnim}>
-          <div className="dash-card">
-            <div className="dash-card-header">
-              <h2 className="dash-card-title">Account Health</h2>
-            </div>
-            <div className="dash-health-grid">
-              <HealthItem label="Profile Strength" value={`${health.profileStrength}%`} pct={health.profileStrength} />
-              <HealthItem label="Security Score" value={`${health.securityScore}%`} pct={health.securityScore} />
-              <HealthItem label="Email Verified" value={health.emailVerified ? "Yes" : "No"} pct={health.emailVerified ? 100 : 0} />
-              <HealthItem label="2FA" value="Not Enabled" pct={0} />
-              <HealthItem label="Storage" value={`${health.storageUsed}MB / ${health.storageLimit}MB`} pct={Math.min((health.storageUsed / health.storageLimit) * 100, 100)} />
-              <HealthItem label="Subscription" value={health.subscription} pct={100} />
+        {health.integrityScore < 75 && (
+          <div className={`dash-warning-banner ${health.integrityScore < 60 ? 'red' : 'yellow'}`} style={{ gridColumn: 'span 12', padding: '16px 20px', borderRadius: '16px', background: health.integrityScore < 60 ? 'rgba(239, 68, 68, 0.1)' : 'rgba(245, 158, 11, 0.1)', border: `1px solid ${health.integrityScore < 60 ? 'rgba(239, 68, 68, 0.3)' : 'rgba(245, 158, 11, 0.3)'}`, color: health.integrityScore < 60 ? '#fca5a5' : '#fcd34d', display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: '28px', height: '28px', flexShrink: 0 }}><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            <div>
+              <span style={{ fontWeight: 600, display: 'block', fontSize: '15px', marginBottom: '2px' }}>Integrity Warning: Suspicious activity detected.</span>
+              <span style={{ fontSize: '13px', opacity: 0.8 }}>Your shield is at {health.integrityScore}%. {health.integrityScore < 60 ? "New interviews are locked. You may only repeat past tests." : "Please refrain from malpractice to avoid account suspension."}</span>
             </div>
           </div>
-        </motion.section>
+        )}
+
+        {/* Identity Widget */}
+        <motion.div className="bento-widget widget-identity" variants={itemAnim} onClick={() => navigate("/profile")} style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'center', textAlign: 'left' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', width: '100%' }}>
+            <div className="dash-avatar" style={{ width: '60px', height: '60px', border: '2px solid rgba(102, 252, 241, 0.3)', flexShrink: 0, margin: 0 }}>
+              {profilePic ? <img src={profilePic} alt="" className="dash-avatar-img" /> : <span className="dash-avatar-initials" style={{ fontSize: '24px' }}>{initials}</span>}
+              <span className={`dash-online-dot ${profile ? "online" : ""}`} />
+            </div>
+            <div className="dash-profile-info" style={{ flex: 1, minWidth: 0 }}>
+              <h3 style={{ fontSize: '20px', margin: '0 0 2px', color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{profile?.first_name ? `${profile.first_name} ${profile.last_name || ""}` : displayName}</h3>
+              <p style={{ margin: 0, fontSize: '13px', color: 'rgba(255,255,255,0.7)' }}>{greeting}</p>
+            </div>
+            <div className="dash-completion-ring-wrap" style={{ width: '44px', height: '44px', margin: 0, flexShrink: 0 }}>
+              <svg className="dash-completion-ring" viewBox="0 0 40 40" style={{ width: '100%', height: '100%' }}>
+                <circle cx="20" cy="20" r="17" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="3" />
+                <motion.circle cx="20" cy="20" r="17" fill="none" stroke="rgba(102, 252, 241, 1)" strokeWidth="3" strokeLinecap="round" strokeDasharray={106.8} initial={{ strokeDashoffset: 106.8 }} animate={{ strokeDashoffset: 106.8 - (106.8 * (completion.percentage || 0)) / 100 }} transition={{ duration: 1.2, ease: [0.16,1,0.3,1] }} transform="rotate(-90 20 20)" />
+              </svg>
+              <span className="dash-completion-pct" style={{ fontSize: '10px' }}>{completion.percentage || 0}%</span>
+            </div>
+          </div>
+          {completion.percentage < 100 && (
+            <span style={{ fontSize: '11px', color: '#f59e0b', marginTop: '12px', background: 'rgba(245, 158, 11, 0.1)', padding: '4px 10px', borderRadius: '100px' }}>Action required: Complete Profile</span>
+          )}
+        </motion.div>
+
+        {/* Telemetry Widgets */}
+        <motion.div className="bento-widget widget-telemetry widget-telemetry-1" variants={itemAnim}>
+          <div className="dash-stat-icon"><StatIcon name="play" /></div>
+          <span className="dash-stat-value"><CountUp value={interviewStats.totalInterviews} /></span>
+          <span className="dash-stat-label">Interviews</span>
+        </motion.div>
+
+        <motion.div className="bento-widget widget-telemetry widget-telemetry-2" variants={itemAnim}>
+          <div className="dash-stat-icon"><StatIcon name="check" /></div>
+          <span className="dash-stat-value"><CountUp value={interviewStats.totalCompleted} /></span>
+          <span className="dash-stat-label">Completed</span>
+        </motion.div>
+
+        <motion.div className="bento-widget widget-telemetry widget-telemetry-3" variants={itemAnim}>
+          <div className="dash-stat-icon"><StatIcon name="trending" /></div>
+          <span className="dash-stat-value"><CountUp value={interviewStats.avgScore} /><span className="dash-stat-suffix">%</span></span>
+          <span className="dash-stat-label">Avg. Score</span>
+        </motion.div>
+
+        <motion.div className="bento-widget widget-telemetry widget-telemetry-4" variants={itemAnim}>
+          <div className="dash-stat-icon"><StatIcon name="star" /></div>
+          <span className="dash-stat-value"><CountUp value={interviewStats.bestScore} /><span className="dash-stat-suffix">%</span></span>
+          <span className="dash-stat-label">Best Score</span>
+        </motion.div>
+
+
+        {/* Operations Widget (Resume) */}
+        <motion.div className="bento-widget widget-operations" variants={itemAnim} style={{ gridColumn: 'span 4' }}>
+          <div className="bento-header">
+            <span>Resume Management</span>
+          </div>
+          {resumeFileName ? (
+            <div className="dash-resume-status" style={{ height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', background: 'none', border: 'none', padding: 0 }}>
+              <div className="dash-resume-info" style={{ marginBottom: '16px', justifyContent: 'center' }}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="dash-resume-icon"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                <span className="dash-resume-filename">{resumeFileName}</span>
+              </div>
+              <div className="dash-resume-actions" style={{ width: '100%', justifyContent: 'center', gap: '16px' }}>
+                <button className="dash-resume-btn" onClick={() => setShowResumeViewer(true)}>View</button>
+                <button className="dash-resume-btn dash-resume-btn-danger" onClick={() => setShowDeleteConfirm(true)}>Delete</button>
+              </div>
+            </div>
+          ) : (
+            <div className="dash-resume-empty" style={{ height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+              <p style={{ marginBottom: '16px' }}>No resume uploaded yet.</p>
+              <label className="dash-resume-upload-label">
+                <input type="file" accept=".pdf,.doc,.docx" onChange={handleResumeUpload} disabled={resumeUploading} hidden />
+                <span className="dash-resume-upload-btn">{resumeUploading ? "Uploading..." : "Upload Resume"}</span>
+              </label>
+            </div>
+          )}
+        </motion.div>
+
+        {/* Integrity Shield Widget */}
+        {/* Integrity Shield Widget */}
+        <motion.div className="bento-widget widget-integrity" variants={itemAnim} style={{ gridColumn: 'span 4', position: 'relative', overflow: 'hidden' }}>
+          <div className="bento-header" style={{ position: 'relative', zIndex: 2 }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: '18px', height: '18px', color: health.integrityScore < 60 ? '#ef4444' : health.integrityScore < 75 ? '#f59e0b' : '#66FCF1' }}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              Integrity Shield
+            </span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, position: 'relative', zIndex: 2 }}>
+            <div style={{ position: 'relative', width: '90px', height: '90px', margin: '8px 0 16px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {/* Background Pulsing Glow */}
+              <motion.div style={{ position: 'absolute', inset: -5, borderRadius: '50%', background: health.integrityScore < 60 ? 'rgba(239, 68, 68, 0.15)' : health.integrityScore < 75 ? 'rgba(245, 158, 11, 0.15)' : 'rgba(102, 252, 241, 0.15)', filter: 'blur(12px)' }} animate={{ scale: [1, 1.05, 1], opacity: [0.2, 0.4, 0.2] }} transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }} />
+              
+              <svg viewBox="0 0 24 24" style={{ width: '100%', height: '100%', position: 'relative', zIndex: 2 }}>
+                <defs>
+                  <clipPath id="shieldClip">
+                    <motion.rect x="0" y="24" width="24" height="24" initial={{ y: 24 }} animate={{ y: 24 - (24 * health.integrityScore / 100) }} transition={{ duration: 1.5, ease: [0.16,1,0.3,1] }} />
+                  </clipPath>
+                </defs>
+                {/* Base Background Shield */}
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.15)" strokeWidth="0.5" />
+                {/* Filled Shield */}
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" fill={health.integrityScore < 60 ? '#ef4444' : health.integrityScore < 75 ? '#f59e0b' : '#66FCF1'} clipPath="url(#shieldClip)" opacity="0.85" />
+                {/* Bright Outline on top */}
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" fill="none" stroke={health.integrityScore < 60 ? '#ef4444' : health.integrityScore < 75 ? '#f59e0b' : '#66FCF1'} strokeWidth="1" opacity="0.6" />
+              </svg>
+
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 3 }}>
+                <span style={{ fontSize: '24px', fontWeight: 800, color: '#fff', lineHeight: 1, letterSpacing: '-0.5px', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>{health.integrityScore}</span>
+                <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.8)', marginTop: '4px', fontWeight: 700, letterSpacing: '1px', textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>SCORE</span>
+              </div>
+            </div>
+            <span style={{ fontSize: '13px', fontWeight: 600, color: health.integrityScore < 60 ? '#fca5a5' : health.integrityScore < 75 ? '#fcd34d' : '#a6fcf7', textAlign: 'center', letterSpacing: '0.2px' }}>{health.integrityScore < 60 ? "Trust Broken: Locked." : health.integrityScore < 75 ? "Warning: Trust at Risk." : "High Trust Standing."}</span>
+          </div>
+          {/* Subtle tech background grid */}
+          <div style={{ position: 'absolute', inset: 0, opacity: 0.03, backgroundSize: '12px 12px', backgroundImage: 'linear-gradient(to right, rgba(255,255,255,1) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,1) 1px, transparent 1px)', pointerEvents: 'none' }} />
+        </motion.div>
+
+        {/* Clock + Navigation Search Widget */}
+        <motion.div className="bento-widget widget-action" variants={itemAnim} style={{ gridColumn: 'span 4', flexDirection: 'column', gap: '16px', background: 'radial-gradient(ellipse at top left, rgba(15, 15, 40, 0.9) 0%, rgba(5, 5, 20, 0.8) 100%)' }}>
+          <WidgetClockSearch />
+        </motion.div>
 
         {/* Remarks History */}
-        <motion.section className="dash-section dash-section-full" variants={itemAnim}>
-          <div className="dash-card">
-            <div className="dash-card-header">
-              <h2 className="dash-card-title">Remarks History</h2>
-            </div>
-            {remarks.length === 0 ? (
-              <p style={{ fontSize: 13, color: "var(--text-muted)", padding: "16px 20px", margin: 0 }}>No assessments taken yet.</p>
-            ) : (
-              <div className="dash-remarks-list">
-                {remarks.map((r) => (
-                  <RemarkRow key={r.id} remark={r} />
-                ))}
-              </div>
-            )}
+        <motion.div className="bento-widget widget-remarks" variants={itemAnim}>
+          <div className="bento-header">
+            <span>Assessment History & Review</span>
           </div>
-        </motion.section>
+          {remarks.length === 0 ? (
+            <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>No assessments taken yet.</p>
+          ) : (
+            <div className="dash-remarks-list">
+              {remarks.map((r) => (
+                <RemarkRow key={r.id} remark={r} />
+              ))}
+            </div>
+          )}
+        </motion.div>
+
+        {/* Timeline Widget (Moved down) */}
+        <motion.div className="bento-widget widget-timeline" variants={itemAnim}>
+          <div className="bento-header">
+            <span>Recent Activity</span>
+          </div>
+          {activity.length === 0 ? (
+            <div className="dash-empty">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="dash-empty-icon"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+              <p>No activity yet.</p>
+              <Link to="/interviews" className="dash-empty-cta">Start Your First Interview</Link>
+            </div>
+          ) : (
+            <div className="dash-timeline" style={{ overflowY: 'auto', flex: 1, paddingRight: '12px' }}>
+              {activity.map((ev, i) => (
+                <div key={i} className="dash-timeline-item">
+                  <div className="dash-tl-dot">
+                    <ActivityDot type={ev.type} />
+                  </div>
+                  <div className="dash-tl-content">
+                    <span className="dash-tl-label">{ev.label}</span>
+                    {ev.score != null && <span className="dash-tl-score">{ev.score}%</span>}
+                  </div>
+                  <span className="dash-tl-time">{relativeTime(ev.date)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </motion.div>
 
       </div>
 
@@ -480,14 +443,31 @@ function HealthItem({ label, value, pct }) {
 
 function RemarkRow({ remark }) {
   const r = remark;
+  const navigate = useNavigate();
   const riskLevel = r.risk_level || "none";
   const terminated = r.terminated || false;
   const score = r.score ?? 0;
   const warnings = r.warnings ?? 0;
   const violationCount = r.malpractice_summary ? Object.keys(r.malpractice_summary).length : 0;
+  const moduleName = r.assessment_type === "general_knowledge" ? "General Knowledge Assessment" : "AI Aptitude Assessment";
   const [expanded, setExpanded] = useState(false);
   const [detail, setDetail] = useState(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [reattempting, setReattempting] = useState(false);
+
+  const handleReattempt = async (e) => {
+    e.stopPropagation();
+    if (reattempting) return;
+    setReattempting(true);
+    try {
+      const res = await reattemptAssessment(r.id);
+      const newId = res?.assessmentId;
+      if (!newId) throw new Error("No assessment created");
+      navigate(`/aptitude/test?id=${newId}`);
+    } catch {
+      setReattempting(false);
+    }
+  };
 
   const statusClass = terminated ? "disqualified" : warnings > 0 ? "warnings" : "clean";
   const statusLabel = terminated ? "Disqualified" : warnings > 0 ? "Completed With Warnings" : "Completed Successfully";
@@ -517,7 +497,7 @@ function RemarkRow({ remark }) {
           )}
         </div>
         <div className="dash-remark-info">
-          <span className="dash-remark-name">AI Aptitude Assessment</span>
+          <span className="dash-remark-name">{moduleName}</span>
           <span className="dash-remark-meta">{r.completed_at ? new Date(r.completed_at).toLocaleDateString() : ""} &middot; {r.difficulty ? r.difficulty.charAt(0).toUpperCase() + r.difficulty.slice(1) : ""}</span>
         </div>
         <div className="dash-remark-stats">
@@ -575,6 +555,13 @@ function RemarkRow({ remark }) {
                 <div className="dash-remark-detail-footer">
                   <span className={`dash-remark-status-badge dash-rs-${statusClass}`}>{statusLabel}</span>
                   <span className={`dash-remark-risk dash-rl-${riskLevel}`}>Risk: {riskLevel.charAt(0).toUpperCase() + riskLevel.slice(1)}</span>
+                </div>
+                <div className="dash-remark-detail-actions">
+                  <button className="dash-remark-action dash-remark-action-primary" onClick={handleReattempt} disabled={reattempting}>
+                    {reattempting ? "Preparing..." : "Reattempt Quiz"}
+                  </button>
+                  <Link to={`/aptitude/results/${r.id}`} className="dash-remark-action">View Full Report</Link>
+                  <Link to={`/aptitude/review/${r.id}`} className="dash-remark-action">View Remarks</Link>
                 </div>
               </div>
             ) : (

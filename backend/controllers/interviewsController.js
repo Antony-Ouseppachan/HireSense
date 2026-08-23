@@ -28,13 +28,7 @@ function generateFallbackQuestions(profile, category) {
       { question: "What is the SI unit of electric current?", options: ["Volt", "Ohm", "Ampere", "Watt"], answer: "Ampere", explanation: "The ampere (A) is the SI base unit of electric current." },
       { question: "In which year did India launch its first satellite?", options: ["1972", "1975", "1978", "1980"], answer: "1975", explanation: "Aryabhata, India's first satellite, was launched on April 19, 1975." },
     ],
-    english: [
-      { question: "Choose the correct spelling:", options: ["Accomodate", "Acommodate", "Accommodate", "Acomodate"], answer: "Accommodate", explanation: "Accommodate has double c and double m." },
-      { question: "What is the synonym of 'Ubiquitous'?", options: ["Rare", "Omnipresent", "Unique", "Absent"], answer: "Omnipresent", explanation: "Ubiquitous means present everywhere, synonymous with omnipresent." },
-      { question: "Identify the error: 'Neither the manager nor his team were present.'", options: ["Neither", "Nor", "Were", "No error"], answer: "Were", explanation: "With 'neither...nor', the verb agrees with the nearest subject. 'Team' is singular, so 'was' is correct." },
-      { question: "Change to passive voice: 'She writes a letter.'", options: ["A letter is written by her.", "A letter was written.", "A letter is being written.", "She is writing a letter."], answer: "A letter is written by her.", explanation: "Passive: object + is/am/are + past participle + by + subject." },
-      { question: "What figure of speech is 'The world is a stage'?", options: ["Simile", "Metaphor", "Personification", "Hyperbole"], answer: "Metaphor", explanation: "A direct comparison without 'like' or 'as' is a metaphor." },
-    ],
+    // english pool removed — now handled by enterprise English assessment (aptitude_assessments with assessment_type='english_communication')
   };
 
   const pool = pools[category] || pools.aptitude;
@@ -50,7 +44,7 @@ async function generateAIQuestions(profile, category, difficulty, duration, mode
   const categoryDescriptions = {
     aptitude: "Generate MCQ aptitude questions covering quantitative aptitude, logical reasoning, data interpretation, and analytical reasoning. Include 4 options per question with the correct answer and explanation.",
     gk: "Generate MCQ general knowledge questions covering current affairs, science, technology, computer basics, and business. Include 4 options per question with the correct answer and explanation.",
-    english: "Generate MCQ English language questions covering grammar, vocabulary, reading comprehension, and verbal ability. Include 4 options per question with the correct answer and explanation.",
+    // english removed — enterprise English now via questionGenerator buildEnglishPrompt (token-optimized, deterministic bank)
     technical: "Generate technical interview questions based on the candidate's tech stack. Each question should test depth of knowledge.",
     resume: "Generate interview questions personalized to the candidate's projects and experience as described in their resume.",
     coding: "Generate coding challenge questions with problem descriptions and expected solution approaches.",

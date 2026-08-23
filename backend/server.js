@@ -7,6 +7,7 @@ const path = require("path");
 dotenv.config();
 
 const { testDbConnection } = require("./config/database");
+const { ensureAptitudeSchema } = require("./services/assessmentSchema");
 
 const authRoutes = require("./routes/auth");
 const profileRoutes = require("./routes/profile");
@@ -16,6 +17,7 @@ const resumeRoutes = require("./routes/resume");
 const autocompleteRoutes = require("./routes/autocomplete");
 const aptitudeRoutes = require("./routes/aptitude");
 const nlpRoutes = require("./routes/nlp");
+const featuresRoutes = require("./routes/features");
 
 const app = express();
 
@@ -44,12 +46,14 @@ app.use("/api/resume", resumeRoutes);
 app.use("/api/autocomplete", autocompleteRoutes);
 app.use("/api/aptitude", aptitudeRoutes);
 app.use("/api/nlp", nlpRoutes);
+app.use("/api/features", featuresRoutes);
 
 const PORT = process.env.PORT || 5000;
 
 async function startServer() {
   try {
     await testDbConnection();
+    await ensureAptitudeSchema();
 
     app.listen(PORT, () => {
       console.log(`HireSense backend is running on port ${PORT}`);

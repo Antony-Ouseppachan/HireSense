@@ -8,7 +8,7 @@ import "../styles/Aptitude.css";
 const container = { hidden: {}, show: { transition: { staggerChildren: 0.04 } } };
 const item = { hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.16, 1, 0.3, 1] } } };
 
-const MODULE_LABELS = { aptitude: "Aptitude", general_knowledge: "General Knowledge" };
+const MODULE_LABELS = { aptitude: "Aptitude", general_knowledge: "General Knowledge", english_communication: "English & Communication" };
 
 function diffTone(difficulty) {
   const d = (difficulty || "").toLowerCase();
@@ -27,9 +27,14 @@ function CollapsibleCard({ q, defaultOpen }) {
   const stateLabel = state === "correct" ? "Correct" : state === "skipped" ? "Skipped" : "Wrong";
   const stateColor = state === "correct" ? "#34d399" : state === "skipped" ? "#fbbf24" : "#f87171";
   const isMultiple = q.type === "multiple";
+  const isDescriptive = ["descriptive", "situational", "professional", "long_answer", "text", "essay"].includes((q.type || "").toLowerCase());
   const userSel = isMultiple && q.userAnswer ? (Array.isArray(q.userAnswer) ? q.userAnswer : JSON.parse(q.userAnswer)) : null;
   const correctSel = isMultiple ? q.correctAnswer : q.correctAnswer;
   const time = q.timeSpent || 0;
+  const evaluationBreakdown = q.breakdown || {};
+  const evaluationMetrics = Object.entries(evaluationBreakdown)
+    .filter(([key, value]) => key !== "correct" && Number.isFinite(Number(value)))
+    .map(([key, value]) => [key, Math.round(Number(value) * 100)]);
 
   const expl = useMemo(() => {
     let e = q.explanation || q.solution || "";
@@ -67,29 +72,67 @@ function CollapsibleCard({ q, defaultOpen }) {
         {open && (
           <motion.div className="apt-review-card-body" initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}>
             {q.passage && <div className="apt-review-passage">{q.passage}</div>}
-            <div className="apt-review-options">
-              {(q.options || []).map((opt, i) => {
-                const optVal = isMultiple ? i : opt;
-                const isUser = isMultiple ? (userSel || []).includes(i) : String(q.userAnswer) === String(opt);
-                const isCorrectOpt = isMultiple ? (correctSel || []).includes(i) : String(q.correctAnswer) === String(opt);
-                let cls = "apt-review-opt";
-                if (isCorrectOpt) cls += " opt-correct";
-                else if (isUser) cls += " opt-user-wrong";
-                return (
-                  <div key={i} className={cls}>
-                    <span className="apt-opt-letter">{optionsLabel(i)}</span>
-                    <span className="apt-opt-text">{opt}</span>
-                    {isCorrectOpt && <span className="apt-opt-flag ok">Correct Answer</span>}
-                    {isUser && !isCorrectOpt && <span className="apt-opt-flag bad">Your Answer</span>}
-                    {optionExplain(i) && (
-                      <div className="apt-review-opt-explain">
-                        <span className="apt-review-opt-explain-label">Why {optionsLabel(i)}:</span> {optionExplain(i)}
-                      </div>
-                    )}
+            {isDescriptive ? (
+              <div className="apt-review-descriptive">
+                <div className="apt-review-section-title">Your Answer</div>
+                <div className="apt-review-answer-text" style={{ padding: "12px 16px", borderRadius: 8, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", fontSize: 13, color: "var(--text-secondary)", whiteSpace: "pre-wrap", minHeight: 60 }}>
+                  {q.userAnswer ? String(q.userAnswer) : <span style={{ color: "var(--text-muted)", fontStyle: "italic" }}>No answer provided</span>}
+                </div>
+                {q.correctAnswer && (
+                  <>
+                    <div className="apt-review-section-title" style={{ marginTop: 12 }}>Model Answer</div>
+                    <div className="apt-review-answer-text" style={{ padding: "12px 16px", borderRadius: 8, background: "rgba(52,211,153,0.06)", border: "1px solid rgba(52,211,153,0.15)", fontSize: 13, color: "var(--text-secondary)", whiteSpace: "pre-wrap" }}>
+                      {String(q.correctAnswer)}
+                    </div>
+                  </>
+                )}
+                {/* Show scoring breakdown if available */}
+                {(q.relevance != null || q.grammar != null || q.vocabulary != null || q.coherence != null) && (
+                  <div className="apt-review-metrics" style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
+                    {q.relevance != null && <span className="apt-review-chip">Relevance: {q.relevance}%</span>}
+                    {q.grammar != null && <span className="apt-review-chip">Grammar: {q.grammar}%</span>}
+                    {q.vocabulary != null && <span className="apt-review-chip">Vocabulary: {q.vocabulary}%</span>}
+                    {q.coherence != null && <span className="apt-review-chip">Coherence: {q.coherence}%</span>}
+                    {q.professionalism != null && <span className="apt-review-chip">Professionalism: {q.professionalism}%</span>}
+                    {q.conciseness != null && <span className="apt-review-chip">Conciseness: {q.conciseness}%</span>}
                   </div>
-                );
-              })}
-            </div>
+                )}
+              </div>
+            ) : (
+              <div className="apt-review-options">
+                {(q.options || []).map((opt, i) => {
+                  const optVal = isMultiple ? i : opt;
+                  const isUser = isMultiple ? (userSel || []).includes(i) : String(q.userAnswer) === String(opt);
+                  const isCorrectOpt = isMultiple ? (correctSel || []).includes(i) : String(q.correctAnswer) === String(opt);
+                  let cls = "apt-review-opt";
+                  if (isCorrectOpt) cls += " opt-correct";
+                  else if (isUser) cls += " opt-user-wrong";
+                  return (
+                    <div key={i} className={cls}>
+                      <span className="apt-opt-letter">{optionsLabel(i)}</span>
+                      <span className="apt-opt-text">{opt}</span>
+                      {isCorrectOpt && <span className="apt-opt-flag ok">Correct Answer</span>}
+                      {isUser && !isCorrectOpt && <span className="apt-opt-flag bad">Your Answer</span>}
+                      {optionExplain(i) && (
+                        <div className="apt-review-opt-explain">
+                          <span className="apt-review-opt-explain-label">Why {optionsLabel(i)}:</span> {optionExplain(i)}
+                        </div>
+                      )}
+                    </div>
+                  );
+                  {evaluationMetrics.length > 0 && (
+                    <div className="apt-review-evaluation-metrics">
+                      {evaluationMetrics.map(([key, value]) => (
+                        <span className="apt-review-evaluation-metric" key={key}>
+                          <span>{key}</span><strong>{value}%</strong>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {q.evaluationFeedback && <div className="apt-review-evaluation-feedback">{q.evaluationFeedback}</div>}
+                })}
+              </div>
+            )}
             {expl && expl.correct && (
               <div className="apt-review-explain">
                 <div className="apt-review-explain-title">Explanation</div>
@@ -103,7 +146,7 @@ function CollapsibleCard({ q, defaultOpen }) {
   );
 }
 
-export default function AptitudeReview() {
+export default function EnglishReview() {
   const { id } = useParams();
   const [review, setReview] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -147,7 +190,7 @@ export default function AptitudeReview() {
   if (error) return (
     <div className="apt-page"><div className="apt-container"><div className="apt-error">
       <h3>Review not available</h3><p>{error}</p>
-      <Link to="/aptitude/history" className="apt-retry-btn" style={{ textDecoration: "none", display: "inline-block", padding: "10px 24px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.12)", color: "var(--text-primary)" }}>Back to History</Link>
+      <Link to="/english/history" className="apt-retry-btn" style={{ textDecoration: "none", display: "inline-block", padding: "10px 24px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.12)", color: "var(--text-primary)" }}>Back to History</Link>
     </div></div></div>
   );
   if (!review) return null;
@@ -156,7 +199,7 @@ export default function AptitudeReview() {
     <motion.div className="apt-page" variants={container} initial="hidden" animate="show">
       <div className="apt-container">
         <motion.div className="apt-header" variants={item}>
-          <span className={`apt-result-module apt-result-module-${review.type || "aptitude"}`}>{MODULE_LABELS[review.type] || "Aptitude"}</span>
+          <span className={`apt-result-module apt-result-module-${review.type || "english_communication"}`}>{MODULE_LABELS[review.type] || "English & Communication"}</span>
           <h1>Question Review</h1>
           <p>Every question, your answer, the correct answer and the explanation.</p>
         </motion.div>
@@ -203,7 +246,7 @@ export default function AptitudeReview() {
         </motion.div>
 
         <motion.div className="apt-start-btn-wrap" variants={item} style={{ marginTop: 32 }}>
-          <Link to={`/aptitude/results/${id}`} className="apt-start-btn" style={{ textDecoration: "none", display: "inline-block" }}>
+          <Link to={`/english/results/${id}`} className="apt-start-btn" style={{ textDecoration: "none", display: "inline-block" }}>
             <svg className="apt-action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M19 12H5" />
               <path d="m12 19-7-7 7-7" />

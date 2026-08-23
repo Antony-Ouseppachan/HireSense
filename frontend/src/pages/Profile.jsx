@@ -1,4 +1,5 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import AutocompleteInput from "../components/AutocompleteInput.jsx";
 import LoadingSpinner from "/src/components/LoadingSpinner.jsx";
 import { useAuth } from "/src/context/AuthContext.jsx";
@@ -176,8 +177,8 @@ export default function Profile() {
   const handleSaveBasic = async () => {
     try {
       await saveProfile({ first_name: firstName, last_name: lastName, target_role_id: targetRoleId || null, experience_level: experienceLevel });
-      showToast("Profile saved");
-    } catch (e) { showToast(e?.message || "Failed to save", "error"); }
+      showToast("Profile details updated successfully");
+    } catch (e) { showToast(e?.message || "Failed to save profile", "error"); }
   };
 
   // ─── Education ───
@@ -193,7 +194,8 @@ export default function Profile() {
     try {
       const res = await updateEducation(id, data);
       setEducation(prev => prev.map(e => e.id === id ? { ...e, ...res } : e));
-    } catch (e) { showToast(e?.message || "Failed to update", "error"); }
+      showToast("Academic history updated");
+    } catch (e) { showToast(e?.message || "Failed to update education", "error"); }
   };
 
   const handleDeleteEdu = async (id) => {
@@ -236,7 +238,8 @@ export default function Profile() {
     try {
       const res = await updateProject(id, data);
       setProjects(prev => prev.map(p => p.id === id ? { ...p, ...res } : p));
-    } catch (e) { showToast(e?.message || "Failed to update", "error"); }
+      showToast("Project details saved");
+    } catch (e) { showToast(e?.message || "Failed to update project", "error"); }
   };
 
   const handleDeleteProject = async (id) => {
@@ -442,7 +445,20 @@ export default function Profile() {
             <span className="card-label">TARGET ROLE <span className="required">*</span></span>
             <AutocompleteInput
               value={targetRoleId ? (profile?.target_role_name || "") : ""}
-              onChange={v => { setTargetRoleId(v); setTargetRoleError(""); }}
+              onChange={async (v) => {
+                setTargetRoleId(v);
+                setTargetRoleError("");
+                if (v) {
+                  try {
+                    await saveProfile({ first_name: firstName, last_name: lastName, target_role_id: v, experience_level: experienceLevel });
+                    const res = await getProfile();
+                    setProfile(res?.profile || {});
+                    showToast("Target role saved successfully");
+                  } catch (err) {
+                    showToast("Failed to save target role", "error");
+                  }
+                }
+              }}
               onBlur={() => { if (!targetRoleId) setTargetRoleError("Please select a valid role."); }}
               search={searchRoles}
               placeholder="Search for a role..."
@@ -476,10 +492,21 @@ export default function Profile() {
           {/* 5. Experience Level */}
           <div className="card section-card">
             <span className="card-label">EXPERIENCE LEVEL</span>
-            <select value={experienceLevel} onChange={e => { setExperienceLevel(e.target.value); saveProfile({ first_name: firstName, last_name: lastName, target_role_id: targetRoleId || null, experience_level: e.target.value }); }}>
-              <option value="">Select...</option>
-              {EXPERIENCE_LEVELS.map(l => <option key={l} value={l}>{l}</option>)}
-            </select>
+            <div className="field">
+              <select value={experienceLevel} onChange={async (e) => {
+                const val = e.target.value;
+                setExperienceLevel(val);
+                try {
+                  await saveProfile({ first_name: firstName, last_name: lastName, target_role_id: targetRoleId || null, experience_level: val });
+                  showToast("Experience level updated successfully");
+                } catch (err) {
+                  showToast(err?.message || "Failed to save experience level", "error");
+                }
+              }}>
+                <option value="">Select experience level...</option>
+                {EXPERIENCE_LEVELS.map(l => <option key={l} value={l}>{l}</option>)}
+              </select>
+            </div>
           </div>
 
           {/* 6. Projects */}
@@ -550,17 +577,18 @@ export default function Profile() {
       </div>
 
       {/* Resume viewer */}
-      {showResumeViewer && (
+      {showResumeViewer && createPortal(
         <div className="viewer-modal-overlay" role="dialog" onClick={() => setShowResumeViewer(false)}>
           <div className="viewer-modal" onClick={e => e.stopPropagation()}>
             <button className="viewer-close" onClick={() => setShowResumeViewer(false)}>&times;</button>
             <iframe src={resumeUrl} title="Resume" className="viewer-iframe" />
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Resume delete confirmation */}
-      {showDeleteConfirm && (
+      {showDeleteConfirm && createPortal(
         <div className="confirm-modal-overlay" role="dialog">
           <div className="confirm-modal">
             <p className="confirm-title">Delete resume?</p>
@@ -570,10 +598,28 @@ export default function Profile() {
               <button className="confirm-button confirm-button-danger" onClick={handleDeleteResume} disabled={isDeleting}>{isDeleting ? "Deleting..." : "Delete"}</button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {toast && <div className={`toast toast-${toast.type}`}>{toast.msg}</div>}
+      {toast && createPortal(
+        <div className={`toast toast-${toast.type}`}>
+          {toast.type === "success" ? (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: '16px', height: '16px', flexShrink: 0 }}>
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+              <polyline points="22 4 12 14.01 9 11.01" />
+            </svg>
+          ) : (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: '16px', height: '16px', flexShrink: 0 }}>
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+          )}
+          <span>{toast.msg}</span>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
